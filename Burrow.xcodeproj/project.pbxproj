@@ -3,8 +3,18 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 77;
+	objectVersion = 70;
 	objects = {
+
+/* Begin PBXContainerItemProxy section */
+		1A0000000000000000000061 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 1A0000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 1A0000000000000000000020;
+			remoteInfo = Burrow;
+		};
+/* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
 		1A00000000000000000000A0 /* Burrow.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Burrow.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -15,38 +25,26 @@
 		1A00000000000000000000E0 /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				Core/.gitkeep,
 				Info.plist,
 				Models/.gitkeep,
-				Core/.gitkeep,
 				Services/.gitkeep,
 				ViewModels/.gitkeep,
-				Views/Clean/.gitkeep,
-				Views/Uninstall/.gitkeep,
 				Views/Analyze/.gitkeep,
-				Views/Status/.gitkeep,
+				Views/Clean/.gitkeep,
 				Views/Onboarding/.gitkeep,
 				Views/Shared/Components/.gitkeep,
 				Views/Shared/Modifiers/.gitkeep,
-				Views/Shared/Style/.gitkeep,
+				Views/Status/.gitkeep,
+				Views/Uninstall/.gitkeep,
 			);
 			target = 1A0000000000000000000020 /* Burrow */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		1A0000000000000000000003 /* Burrow */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-				1A00000000000000000000E0 /* PBXFileSystemSynchronizedBuildFileExceptionSet */,
-			);
-			path = Burrow;
-			sourceTree = "<group>";
-		};
-		1A0000000000000000000004 /* BurrowTests */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = BurrowTests;
-			sourceTree = "<group>";
-		};
+		1A0000000000000000000003 /* Burrow */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (1A00000000000000000000E0 /* PBXFileSystemSynchronizedBuildFileExceptionSet */, ); explicitFileTypes = {}; explicitFolders = (); path = Burrow; sourceTree = "<group>"; };
+		1A0000000000000000000004 /* BurrowTests */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = BurrowTests; sourceTree = "<group>"; };
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -162,7 +160,6 @@
 			);
 			mainGroup = 1A0000000000000000000002;
 			minimizedProjectReferenceProxies = 1;
-			preferredProjectObjectVersion = 77;
 			productRefGroup = 1A0000000000000000000005 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -206,16 +203,6 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
-
-/* Begin PBXContainerItemProxy section */
-		1A0000000000000000000061 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 1A0000000000000000000001 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = 1A0000000000000000000020;
-			remoteInfo = Burrow;
-		};
-/* End PBXContainerItemProxy section */
 
 /* Begin PBXTargetDependency section */
 		1A0000000000000000000060 /* PBXTargetDependency */ = {
