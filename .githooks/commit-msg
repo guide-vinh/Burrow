@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# Enforces Burrow commit message format.
+#   Subject: <type>: <summary>   (subject <= 50 chars)
+#   Types:   feat, fix, chore, refactor, test, docs, style, add, improve
+# Install once per clone:
+#   git config core.hooksPath .githooks
+
+set -eu
+
+msg_file="$1"
+subject="$(head -n1 "$msg_file")"
+
+# Skip auto-generated commits.
+case "$subject" in
+  "Merge "*|"Revert "*|"fixup!"*|"squash!"*|"amend!"*) exit 0 ;;
+esac
+
+types_re='^(feat|fix|chore|refactor|test|docs|style|add|improve): .+'
+
+if ! printf '%s' "$subject" | grep -Eq "$types_re"; then
+  echo "commit-msg: subject must match '<type>: <summary>'"
+  echo "  types: feat, fix, chore, refactor, test, docs, style, add, improve"
+  echo "  got:   '$subject'"
+  exit 1
+fi
+
+if [ "${#subject}" -gt 50 ]; then
+  echo "commit-msg: subject is ${#subject} chars (max 50)"
+  echo "  got: '$subject'"
+  exit 1
+fi
+
+exit 0
