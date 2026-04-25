@@ -1,0 +1,16 @@
+{
+  "userPaths": [
+    "~/Library/Application Support/{bundleId}",
+    "~/Library/Caches/{bundleId}",
+    "~/Library/Preferences/{bundleId}.plist",
+    "~/Library/Saved Application State/{bundleId}.savedState",
+    "~/Library/Containers/{bundleId}",
+    "~/Library/Group Containers/group.{bundleId}",
+    "~/Library/LaunchAgents/{bundleId}.plist"
+  ],
+  "systemPaths": [
+    "/Library/LaunchDaemons/{bundleId}.plist",
+    "/Library/PrivilegedHelperTools/{bundleId}",
+    "/private/var/db/receipts/{bundleId}.bom"
+  ]
+}

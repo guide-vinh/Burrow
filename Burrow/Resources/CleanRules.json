@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "categories": [
+    {
+      "id": "browser.chrome",
+      "title": "Google Chrome",
+      "summary": "Cache, code cache, GPU and shader caches",
+      "group": "browser",
+      "icon": "globe",
+      "risk": "low",
+      "defaultEnabled": true,
+      "requiresAppQuit": "com.google.Chrome",
+      "rules": [
+        { "kind": "directoryContents", "path": "~/Library/Caches/Google/Chrome" },
+        { "kind": "glob",              "path": "~/Library/Application Support/Google/Chrome/*/Cache" }
+      ]
+    },
+    {
+      "id": "system.logs",
+      "title": "System Logs",
+      "summary": "User-level diagnostic logs",
+      "group": "system",
+      "icon": "doc-text",
+      "risk": "low",
+      "defaultEnabled": true,
+      "rules": [
+        { "kind": "directoryContents", "path": "~/Library/Logs", "olderThanDays": 14 }
+      ]
+    },
+    {
+      "id": "developer.node_modules",
+      "title": "node_modules",
+      "summary": "Stale npm dependency trees in project directories",
+      "group": "developer",
+      "icon": "shippingbox",
+      "risk": "high",
+      "defaultEnabled": false,
+      "rules": [
+        { "kind": "glob", "path": "~/Developer/*/node_modules", "olderThanDays": 30 }
+      ]
+    }
+  ]
+}
