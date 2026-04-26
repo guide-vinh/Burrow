@@ -4,7 +4,7 @@ import SwiftUI
 struct BurrowApp: App {
     var body: some Scene {
         WindowGroup {
-            Text("Burrow")
+            RootView()
         }
     }
 }

@@ -27,9 +27,7 @@
 			membershipExceptions = (
 				Info.plist,
 				Views/Analyze/.gitkeep,
-				Views/Clean/.gitkeep,
 				Views/Onboarding/.gitkeep,
-				Views/Shared/Modifiers/.gitkeep,
 				Views/Status/.gitkeep,
 				Views/Uninstall/.gitkeep,
 			);
