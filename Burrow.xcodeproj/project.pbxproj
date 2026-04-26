@@ -29,7 +29,6 @@
 				Views/Analyze/.gitkeep,
 				Views/Clean/.gitkeep,
 				Views/Onboarding/.gitkeep,
-				Views/Shared/Components/.gitkeep,
 				Views/Shared/Modifiers/.gitkeep,
 				Views/Status/.gitkeep,
 				Views/Uninstall/.gitkeep,
