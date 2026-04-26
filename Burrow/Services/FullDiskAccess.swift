@@ -17,11 +17,40 @@ enum FullDiskAccess {
             .appendingPathComponent("Library/Safari/CloudTabs.db"))
     }
 
+    /// Defence-in-depth probe list: ordered by how likely each file is
+    /// to exist on a typical Mac (Bookmarks.plist exists once Safari has
+    /// any bookmark; TCC.db is created by macOS itself). The no-arg
+    /// `probe()` returns true if ANY of these is readable, which makes
+    /// the FDA detection robust against missing single files (e.g. user
+    /// who never opened Safari).
+    static var defaultProbePaths: [URL] {
+        let home = NSHomeDirectory() as NSString
+        return [
+            "Library/Safari/Bookmarks.plist",
+            "Library/Safari/History.db",
+            "Library/Safari/CloudTabs.db",
+            "Library/Application Support/com.apple.TCC/TCC.db",
+        ].map { URL(fileURLWithPath: home.appendingPathComponent($0)) }
+    }
+
+    /// Robust no-arg probe: returns true if ANY of `defaultProbePaths`
+    /// is readable. Used by the onboarding flow to decide whether to
+    /// show the FDA sheet.
+    static func probe() -> Bool {
+        for url in defaultProbePaths {
+            if probe(at: url) {
+                return true
+            }
+        }
+        logger.info("FDA probe denied across all default paths")
+        return false
+    }
+
     /// Returns true if the current process can read `url`, false if the
     /// kernel returned EPERM/EACCES (FDA not granted) or if the file is
     /// missing (ENOENT — caller may treat as "Safari uninstalled, try
     /// another tripwire").
-    static func probe(at url: URL = defaultProbe) -> Bool {
+    static func probe(at url: URL) -> Bool {
         let path = url.path
         let fd = open(path, O_RDONLY)
 
