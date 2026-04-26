@@ -5,21 +5,24 @@
   "_documentation": {
     "placeholders": {
       "{bundleId}": "Reverse-DNS bundle identifier from Info.plist CFBundleIdentifier (e.g., com.tinyspeck.slackmacgap)",
-      "{name}": "Display name from CFBundleName or fallback to .app filename without extension (e.g., Slack)",
-      "{bundleIdPrefix}": "Bundle ID without final segment, used for sub-process daemons (e.g., com.tinyspeck.slackmacgap → com.tinyspeck.slackmacgap.helper)",
-      "{teamId}": "Apple Developer Team ID (10-char), only present in some entitlements; resolved at scan time from app signature when available"
+      "{name}": "Display name. Engine tries CFBundleName first; if that path doesn't exist, falls back to the .app filename without extension. Both forms are scanned and results deduped, so apps where these differ (e.g., Visual Studio Code: CFBundleName='Code', filename='Visual Studio Code') are still caught."
     },
     "matchTypes": {
-      "exact": "Path matches verbatim after placeholder substitution. Default for plist files.",
-      "prefix": "Any path starting with the substituted prefix. Used for Containers, Group Containers where suffixes vary.",
-      "containsBundleId": "Filesystem walk of a parent directory; entries whose name CONTAINS the bundle ID match. Catches teamId-prefixed group containers.",
-      "glob": "Standard glob with * wildcards expanded at scan time."
+      "exact": "Path matches verbatim after placeholder substitution. Default when matchType is omitted. For directories, the entire directory tree is the leftover (recursive trash).",
+      "prefix": "URL-ancestor match: the candidate path equals the prefix OR is a descendant directory. Lexical-prefix collisions (e.g., `foo` matching `foobar`) do NOT match.",
+      "containsBundleId": "Walks the parent directory at depth 1 only; entries whose name CONTAINS the bundle ID match. Catches teamId-prefixed group containers like UBF8T346G9.com.tinyspeck.slackmacgap.",
+      "glob": "Standard glob with * wildcards expanded at scan time. * matches any characters within a path segment."
     },
     "riskLevels": {
       "safe": "Pure cache or regenerable data. Default-checked.",
       "caution": "Preferences and saved state. User-visible on next launch if app reinstalled. Default-checked but reviewable.",
       "highValue": "May contain user data (databases, attachments, drafts). Default-UNCHECKED. User must explicitly opt in."
-    }
+    },
+    "vendorOverridesKeyConvention": {
+      "trailingDot": "Vendor key ending with `.` matches any installed app whose CFBundleIdentifier starts with that string. Example: `com.adobe.` matches com.adobe.Photoshop, com.adobe.Illustrator, etc.",
+      "literal": "Vendor key without a trailing dot matches the bundle ID exactly. Example: `com.google.Chrome` matches only Chrome, not com.google.Chrome.canary."
+    },
+    "sharedDirectoryWarning": "Vendor entries that target a shared root (e.g., ~/Library/Application Support/Adobe) are ALWAYS default-UNCHECKED in the UI regardless of risk, and the vendor's `warning` text is shown prominently. Removing them affects every app from that vendor."
   },
 
   "userPaths": [
@@ -464,7 +467,7 @@
       "paths": [
         { "path": "~/Library/Containers/com.microsoft.errorreporting", "risk": "safe", "category": "vendorShared", "description": "Microsoft error reporting" },
         { "path": "~/Library/Containers/com.microsoft.autoupdate2", "risk": "caution", "category": "vendorShared", "description": "Microsoft AutoUpdate — shared, only remove if uninstalling all Office apps" },
-        { "path": "~/Library/Group Containers/UBF8T346G9.com.microsoft", "matchType": "prefix", "risk": "highValue", "category": "vendorShared", "description": "Microsoft group container (TeamID UBF8T346G9) — shared between Office apps" },
+        { "path": "~/Library/Group Containers/UBF8T346G9.com.microsoft*", "matchType": "glob", "risk": "highValue", "category": "vendorShared", "description": "Microsoft group containers (TeamID UBF8T346G9) — shared between Office apps; e.g. .teams, .oneauth, .rdc" },
         { "path": "~/Library/Application Support/Microsoft", "risk": "highValue", "category": "vendorShared", "description": "Microsoft shared data" }
       ],
       "warning": "Microsoft Office apps share UBF8T346G9 group container. Removing it affects all Office apps."
