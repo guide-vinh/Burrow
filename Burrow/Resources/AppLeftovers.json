@@ -1,16 +1,551 @@
 {
+  "schemaVersion": 2,
+  "lastUpdated": "2026-04-26",
+  "credit": "Pattern set derived from tw93/Mole's lib/uninstall lineage, AppCleaner conventions, and macOS Sonoma/Sequoia conventions. MIT.",
+  "_documentation": {
+    "placeholders": {
+      "{bundleId}": "Reverse-DNS bundle identifier from Info.plist CFBundleIdentifier (e.g., com.tinyspeck.slackmacgap)",
+      "{name}": "Display name from CFBundleName or fallback to .app filename without extension (e.g., Slack)",
+      "{bundleIdPrefix}": "Bundle ID without final segment, used for sub-process daemons (e.g., com.tinyspeck.slackmacgap → com.tinyspeck.slackmacgap.helper)",
+      "{teamId}": "Apple Developer Team ID (10-char), only present in some entitlements; resolved at scan time from app signature when available"
+    },
+    "matchTypes": {
+      "exact": "Path matches verbatim after placeholder substitution. Default for plist files.",
+      "prefix": "Any path starting with the substituted prefix. Used for Containers, Group Containers where suffixes vary.",
+      "containsBundleId": "Filesystem walk of a parent directory; entries whose name CONTAINS the bundle ID match. Catches teamId-prefixed group containers.",
+      "glob": "Standard glob with * wildcards expanded at scan time."
+    },
+    "riskLevels": {
+      "safe": "Pure cache or regenerable data. Default-checked.",
+      "caution": "Preferences and saved state. User-visible on next launch if app reinstalled. Default-checked but reviewable.",
+      "highValue": "May contain user data (databases, attachments, drafts). Default-UNCHECKED. User must explicitly opt in."
+    }
+  },
+
   "userPaths": [
-    "~/Library/Application Support/{bundleId}",
-    "~/Library/Caches/{bundleId}",
-    "~/Library/Preferences/{bundleId}.plist",
-    "~/Library/Saved Application State/{bundleId}.savedState",
-    "~/Library/Containers/{bundleId}",
-    "~/Library/Group Containers/group.{bundleId}",
-    "~/Library/LaunchAgents/{bundleId}.plist"
+    {
+      "path": "~/Library/Application Support/{bundleId}",
+      "matchType": "prefix",
+      "risk": "highValue",
+      "category": "appData",
+      "description": "App's primary data directory — may contain databases, attachments, drafts"
+    },
+    {
+      "path": "~/Library/Application Support/{name}",
+      "matchType": "prefix",
+      "risk": "highValue",
+      "category": "appData",
+      "description": "Some apps use display name instead of bundle ID for Application Support"
+    },
+    {
+      "path": "~/Library/Containers/{bundleId}",
+      "matchType": "prefix",
+      "risk": "highValue",
+      "category": "sandbox",
+      "description": "Sandboxed app's container — includes Documents, Library, Data subfolders with user data"
+    },
+    {
+      "path": "~/Library/Group Containers/group.{bundleId}",
+      "matchType": "prefix",
+      "risk": "highValue",
+      "category": "sandbox",
+      "description": "Shared data between an app and its extensions"
+    },
+    {
+      "path": "~/Library/Group Containers",
+      "matchType": "containsBundleId",
+      "risk": "highValue",
+      "category": "sandbox",
+      "description": "TeamID-prefixed group containers (e.g., UBF8T346G9.com.microsoft.teams). Walks parent dir for any folder whose name contains the bundle ID."
+    },
+    {
+      "path": "~/Library/Application Scripts/{bundleId}",
+      "matchType": "prefix",
+      "risk": "caution",
+      "category": "scripts",
+      "description": "App-specific scripts directory"
+    },
+    {
+      "path": "~/Library/Application Scripts/group.{bundleId}",
+      "matchType": "prefix",
+      "risk": "caution",
+      "category": "scripts",
+      "description": "Group container scripts"
+    },
+    {
+      "path": "~/Library/Application Scripts",
+      "matchType": "containsBundleId",
+      "risk": "caution",
+      "category": "scripts",
+      "description": "TeamID-prefixed application scripts"
+    },
+
+    {
+      "path": "~/Library/Caches/{bundleId}",
+      "matchType": "prefix",
+      "risk": "safe",
+      "category": "cache",
+      "description": "App's cache directory — always safe to remove, regenerated on next launch"
+    },
+    {
+      "path": "~/Library/Caches/{name}",
+      "matchType": "prefix",
+      "risk": "safe",
+      "category": "cache",
+      "description": "Display-name-keyed cache (some non-sandboxed apps)"
+    },
+    {
+      "path": "~/Library/Caches",
+      "matchType": "containsBundleId",
+      "risk": "safe",
+      "category": "cache",
+      "description": "Catches helper bundle caches like com.bundleId.helper"
+    },
+    {
+      "path": "~/Library/Caches/com.apple.helpd/Generated/{bundleId}*",
+      "matchType": "glob",
+      "risk": "safe",
+      "category": "cache",
+      "description": "Generated help index for the app"
+    },
+
+    {
+      "path": "~/Library/Preferences/{bundleId}.plist",
+      "matchType": "exact",
+      "risk": "caution",
+      "category": "preferences",
+      "description": "Main preferences file"
+    },
+    {
+      "path": "~/Library/Preferences/{bundleId}",
+      "matchType": "prefix",
+      "risk": "caution",
+      "category": "preferences",
+      "description": "Some apps use a directory under Preferences"
+    },
+    {
+      "path": "~/Library/Preferences/ByHost/{bundleId}.*.plist",
+      "matchType": "glob",
+      "risk": "caution",
+      "category": "preferences",
+      "description": "Host-specific preferences (UUID-suffixed)"
+    },
+    {
+      "path": "~/Library/Preferences",
+      "matchType": "containsBundleId",
+      "risk": "caution",
+      "category": "preferences",
+      "description": "Sub-bundle preferences (helper apps, extensions)"
+    },
+
+    {
+      "path": "~/Library/Saved Application State/{bundleId}.savedState",
+      "matchType": "prefix",
+      "risk": "caution",
+      "category": "state",
+      "description": "Window/tab restoration state"
+    },
+    {
+      "path": "~/Library/Autosave Information/{bundleId}",
+      "matchType": "prefix",
+      "risk": "highValue",
+      "category": "state",
+      "description": "Autosaved unsaved documents — may contain user work"
+    },
+    {
+      "path": "~/Library/Autosave Information",
+      "matchType": "containsBundleId",
+      "risk": "highValue",
+      "category": "state",
+      "description": "Autosave files keyed by app name variants"
+    },
+
+    {
+      "path": "~/Library/Logs/{bundleId}",
+      "matchType": "prefix",
+      "risk": "safe",
+      "category": "logs",
+      "description": "App-specific log directory"
+    },
+    {
+      "path": "~/Library/Logs/{name}",
+      "matchType": "prefix",
+      "risk": "safe",
+      "category": "logs",
+      "description": "Display-name-keyed log directory"
+    },
+    {
+      "path": "~/Library/Logs/DiagnosticReports",
+      "matchType": "containsBundleId",
+      "risk": "safe",
+      "category": "logs",
+      "description": "Crash reports filed under app name (e.g., AppName_2026-04-26-XXXXX.ips)"
+    },
+    {
+      "path": "~/Library/Logs/CrashReporter",
+      "matchType": "containsBundleId",
+      "risk": "safe",
+      "category": "logs",
+      "description": "Older-style crash reports"
+    },
+
+    {
+      "path": "~/Library/Cookies/{bundleId}.binarycookies",
+      "matchType": "exact",
+      "risk": "caution",
+      "category": "network",
+      "description": "App's binary cookies"
+    },
+    {
+      "path": "~/Library/HTTPStorages/{bundleId}",
+      "matchType": "prefix",
+      "risk": "caution",
+      "category": "network",
+      "description": "WebKit-based HTTP storage (non-sandboxed)"
+    },
+    {
+      "path": "~/Library/HTTPStorages/{bundleId}.binarycookies",
+      "matchType": "exact",
+      "risk": "caution",
+      "category": "network",
+      "description": "HTTPStorages cookies file"
+    },
+    {
+      "path": "~/Library/WebKit/{bundleId}",
+      "matchType": "prefix",
+      "risk": "caution",
+      "category": "network",
+      "description": "WebKit databases, IndexedDB, local storage"
+    },
+
+    {
+      "path": "~/Library/LaunchAgents/{bundleId}.plist",
+      "matchType": "exact",
+      "risk": "caution",
+      "category": "launchAgent",
+      "description": "User launch agent — daemon launched at login"
+    },
+    {
+      "path": "~/Library/LaunchAgents",
+      "matchType": "containsBundleId",
+      "risk": "caution",
+      "category": "launchAgent",
+      "description": "Sub-process launch agents (e.g., com.bundleId.helper.plist)"
+    },
+
+    {
+      "path": "~/Library/Internet Plug-Ins/{name}.plugin",
+      "matchType": "prefix",
+      "risk": "caution",
+      "category": "plugins",
+      "description": "Browser/internet plugin contributed by the app"
+    },
+    {
+      "path": "~/Library/Audio/Plug-Ins",
+      "matchType": "containsBundleId",
+      "risk": "caution",
+      "category": "plugins",
+      "description": "AudioUnit, VST plugins (relevant for music apps)"
+    },
+    {
+      "path": "~/Library/PreferencePanes",
+      "matchType": "containsBundleId",
+      "risk": "caution",
+      "category": "plugins",
+      "description": "System Settings panes installed by app"
+    },
+    {
+      "path": "~/Library/Address Book Plug-Ins",
+      "matchType": "containsBundleId",
+      "risk": "caution",
+      "category": "plugins",
+      "description": "Contacts.app extensions"
+    },
+    {
+      "path": "~/Library/Services",
+      "matchType": "containsBundleId",
+      "risk": "caution",
+      "category": "plugins",
+      "description": "App-provided macOS Services menu items"
+    },
+
+    {
+      "path": "~/Library/Metadata/{bundleId}",
+      "matchType": "prefix",
+      "risk": "safe",
+      "category": "system",
+      "description": "Spotlight metadata indexes"
+    },
+    {
+      "path": "~/Library/Metadata",
+      "matchType": "containsBundleId",
+      "risk": "safe",
+      "category": "system",
+      "description": "Spotlight per-app metadata files"
+    }
   ],
+
   "systemPaths": [
-    "/Library/LaunchDaemons/{bundleId}.plist",
-    "/Library/PrivilegedHelperTools/{bundleId}",
-    "/private/var/db/receipts/{bundleId}.bom"
-  ]
+    {
+      "path": "/Library/Application Support/{name}",
+      "matchType": "prefix",
+      "risk": "highValue",
+      "category": "appData",
+      "needsPrivilege": true,
+      "description": "System-wide app support data"
+    },
+    {
+      "path": "/Library/Application Support/{bundleId}",
+      "matchType": "prefix",
+      "risk": "highValue",
+      "category": "appData",
+      "needsPrivilege": true,
+      "description": "Bundle-keyed system app support"
+    },
+
+    {
+      "path": "/Library/Caches/{bundleId}",
+      "matchType": "prefix",
+      "risk": "safe",
+      "category": "cache",
+      "needsPrivilege": true,
+      "description": "System-wide app cache"
+    },
+    {
+      "path": "/Library/Preferences/{bundleId}.plist",
+      "matchType": "exact",
+      "risk": "caution",
+      "category": "preferences",
+      "needsPrivilege": true,
+      "description": "System-wide preferences"
+    },
+
+    {
+      "path": "/Library/LaunchAgents/{bundleId}.plist",
+      "matchType": "exact",
+      "risk": "caution",
+      "category": "launchAgent",
+      "needsPrivilege": true,
+      "description": "System-wide launch agent"
+    },
+    {
+      "path": "/Library/LaunchAgents",
+      "matchType": "containsBundleId",
+      "risk": "caution",
+      "category": "launchAgent",
+      "needsPrivilege": true,
+      "description": "Sub-process system launch agents"
+    },
+    {
+      "path": "/Library/LaunchDaemons/{bundleId}.plist",
+      "matchType": "exact",
+      "risk": "caution",
+      "category": "launchDaemon",
+      "needsPrivilege": true,
+      "description": "Root-level daemon plist"
+    },
+    {
+      "path": "/Library/LaunchDaemons",
+      "matchType": "containsBundleId",
+      "risk": "caution",
+      "category": "launchDaemon",
+      "needsPrivilege": true,
+      "description": "Sub-process system launch daemons (helper services)"
+    },
+
+    {
+      "path": "/Library/PrivilegedHelperTools/{bundleId}",
+      "matchType": "prefix",
+      "risk": "caution",
+      "category": "helper",
+      "needsPrivilege": true,
+      "description": "SMJobBless-installed privileged helper binary"
+    },
+
+    {
+      "path": "/Library/Internet Plug-Ins/{name}.plugin",
+      "matchType": "prefix",
+      "risk": "caution",
+      "category": "plugins",
+      "needsPrivilege": true,
+      "description": "System-wide internet plugin"
+    },
+    {
+      "path": "/Library/Audio/Plug-Ins/Components",
+      "matchType": "containsBundleId",
+      "risk": "caution",
+      "category": "plugins",
+      "needsPrivilege": true,
+      "description": "AudioUnit components"
+    },
+    {
+      "path": "/Library/Audio/Plug-Ins/VST",
+      "matchType": "containsBundleId",
+      "risk": "caution",
+      "category": "plugins",
+      "needsPrivilege": true,
+      "description": "VST plugins"
+    },
+    {
+      "path": "/Library/Audio/Plug-Ins/VST3",
+      "matchType": "containsBundleId",
+      "risk": "caution",
+      "category": "plugins",
+      "needsPrivilege": true,
+      "description": "VST3 plugins"
+    },
+    {
+      "path": "/Library/PreferencePanes",
+      "matchType": "containsBundleId",
+      "risk": "caution",
+      "category": "plugins",
+      "needsPrivilege": true,
+      "description": "System Settings panes"
+    },
+    {
+      "path": "/Library/Logs/{name}",
+      "matchType": "prefix",
+      "risk": "safe",
+      "category": "logs",
+      "needsPrivilege": true,
+      "description": "System-wide logs"
+    },
+    {
+      "path": "/Library/Logs/DiagnosticReports",
+      "matchType": "containsBundleId",
+      "risk": "safe",
+      "category": "logs",
+      "needsPrivilege": true,
+      "description": "System-level crash reports"
+    },
+
+    {
+      "path": "/private/var/db/receipts/{bundleId}.bom",
+      "matchType": "exact",
+      "risk": "safe",
+      "category": "receipts",
+      "needsPrivilege": true,
+      "description": "macOS installer receipt — bill of materials"
+    },
+    {
+      "path": "/private/var/db/receipts/{bundleId}.plist",
+      "matchType": "exact",
+      "risk": "safe",
+      "category": "receipts",
+      "needsPrivilege": true,
+      "description": "macOS installer receipt — metadata"
+    },
+    {
+      "path": "/private/var/db/receipts",
+      "matchType": "containsBundleId",
+      "risk": "safe",
+      "category": "receipts",
+      "needsPrivilege": true,
+      "description": "Sub-bundle receipts (helper installers)"
+    }
+  ],
+
+  "vendorOverrides": {
+    "_doc": "Vendor-specific extra paths matched by bundle ID prefix. Applied IN ADDITION TO generic patterns. Each vendor entry has its own risk/category since these are well-known shared locations.",
+
+    "com.adobe.": {
+      "displayName": "Adobe",
+      "paths": [
+        { "path": "~/Library/Application Support/Adobe", "risk": "highValue", "category": "vendorShared", "description": "Adobe Creative Cloud shared data — DO NOT remove if other Adobe apps installed" },
+        { "path": "/Library/Application Support/Adobe", "risk": "highValue", "category": "vendorShared", "needsPrivilege": true, "description": "System-wide Adobe data" },
+        { "path": "~/Library/Caches/Adobe", "risk": "safe", "category": "cache", "description": "Adobe shared caches" },
+        { "path": "~/Library/Preferences/Adobe", "risk": "caution", "category": "preferences", "description": "Adobe shared preferences" }
+      ],
+      "warning": "Adobe apps share resources. Removing shared paths affects ALL installed Adobe apps. Use Adobe Creative Cloud's official uninstaller instead when possible."
+    },
+
+    "com.microsoft.": {
+      "displayName": "Microsoft",
+      "paths": [
+        { "path": "~/Library/Containers/com.microsoft.errorreporting", "risk": "safe", "category": "vendorShared", "description": "Microsoft error reporting" },
+        { "path": "~/Library/Containers/com.microsoft.autoupdate2", "risk": "caution", "category": "vendorShared", "description": "Microsoft AutoUpdate — shared, only remove if uninstalling all Office apps" },
+        { "path": "~/Library/Group Containers/UBF8T346G9.com.microsoft", "matchType": "prefix", "risk": "highValue", "category": "vendorShared", "description": "Microsoft group container (TeamID UBF8T346G9) — shared between Office apps" },
+        { "path": "~/Library/Application Support/Microsoft", "risk": "highValue", "category": "vendorShared", "description": "Microsoft shared data" }
+      ],
+      "warning": "Microsoft Office apps share UBF8T346G9 group container. Removing it affects all Office apps."
+    },
+
+    "com.jetbrains.": {
+      "displayName": "JetBrains",
+      "paths": [
+        { "path": "~/Library/Caches/JetBrains", "matchType": "containsBundleId", "risk": "safe", "category": "vendorShared", "description": "Per-IDE cache directory" },
+        { "path": "~/Library/Logs/JetBrains", "matchType": "containsBundleId", "risk": "safe", "category": "vendorShared", "description": "Per-IDE log directory" },
+        { "path": "~/Library/Application Support/JetBrains", "matchType": "containsBundleId", "risk": "highValue", "category": "vendorShared", "description": "Per-IDE settings, plugins, scratches" },
+        { "path": "~/Library/Preferences/JetBrains", "matchType": "containsBundleId", "risk": "caution", "category": "vendorShared", "description": "Per-IDE preferences" }
+      ]
+    },
+
+    "com.google.Chrome": {
+      "displayName": "Google Chrome",
+      "paths": [
+        { "path": "~/Library/Application Support/Google/Chrome", "risk": "highValue", "category": "browserData", "description": "Chrome profiles, bookmarks, history, extensions" },
+        { "path": "~/Library/Caches/Google/Chrome", "risk": "safe", "category": "cache", "description": "Chrome cache" },
+        { "path": "~/Library/Caches/com.google.Keystone", "risk": "safe", "category": "cache", "description": "Google Software Update cache" }
+      ],
+      "warning": "Removing Chrome profile data deletes all bookmarks, history, and extensions across all profiles."
+    },
+
+    "org.mozilla.firefox": {
+      "displayName": "Firefox",
+      "paths": [
+        { "path": "~/Library/Application Support/Firefox", "risk": "highValue", "category": "browserData", "description": "Firefox profiles, bookmarks, history" },
+        { "path": "~/Library/Caches/Firefox", "risk": "safe", "category": "cache", "description": "Firefox cache" },
+        { "path": "~/Library/Caches/Mozilla", "risk": "safe", "category": "cache", "description": "Mozilla shared cache" }
+      ]
+    },
+
+    "com.spotify.client": {
+      "displayName": "Spotify",
+      "paths": [
+        { "path": "~/Library/Application Support/Spotify/PersistentCache", "risk": "safe", "category": "cache", "description": "Spotify offline cache (may be GBs)" },
+        { "path": "~/Library/Caches/com.spotify.client", "risk": "safe", "category": "cache", "description": "Spotify in-memory cache" }
+      ]
+    },
+
+    "com.docker.": {
+      "displayName": "Docker",
+      "paths": [
+        { "path": "~/Library/Containers/com.docker.docker", "risk": "highValue", "category": "vendorShared", "description": "Docker Desktop container" },
+        { "path": "~/Library/Group Containers/group.com.docker", "risk": "highValue", "category": "vendorShared", "description": "Docker Desktop group container" },
+        { "path": "~/.docker", "risk": "highValue", "category": "vendorShared", "description": "Docker CLI config and certs" }
+      ],
+      "warning": "Docker Desktop has its own uninstaller (Settings → Troubleshoot → Uninstall) that handles VM cleanup. Use it before removing these paths."
+    }
+  },
+
+  "ignoreApps": {
+    "_doc": "Bundle ID patterns that Burrow MUST refuse to uninstall via this flow. Critical system apps or apps that require their own uninstaller.",
+    "patterns": [
+      "com.apple.*",
+      "com.microsoft.OneDrive",
+      "com.crowdstrike.falcon.Agent",
+      "com.mcafee.*",
+      "com.symantec.*",
+      "com.parallels.desktop.console",
+      "com.vmware.fusion"
+    ],
+    "reason": "System apps (com.apple.*) cannot be safely uninstalled. Security software (CrowdStrike, McAfee, Symantec) and VMs (Parallels, VMware) require dedicated uninstallers to clean up kernel extensions and system extensions."
+  },
+
+  "homebrewDetection": {
+    "_doc": "If the .app bundle is a symlink whose target is under one of these prefixes, the app is Homebrew-managed. The user should be warned and offered to run `brew uninstall --cask` instead.",
+    "caskroomPrefixes": [
+      "/opt/homebrew/Caskroom",
+      "/usr/local/Caskroom"
+    ],
+    "uninstallCommand": "brew uninstall --cask {caskName}",
+    "afterCommand": "brew autoremove",
+    "warningMessage": "This app appears to be installed via Homebrew. Removing it manually may leave brew's database inconsistent. Recommended: run 'brew uninstall --cask <name>' first, then re-scan."
+  },
+
+  "macAppStoreDetection": {
+    "_doc": "If `_MASReceipt/receipt` exists inside the .app bundle, it was installed via Mac App Store. Receipt is bundled with the app, so when the app is removed it goes too. No special handling required for v0.1, but flag in UI.",
+    "receiptPath": "Contents/_MASReceipt/receipt",
+    "uiHint": "Mac App Store app — system manages receipts automatically"
+  }
 }
