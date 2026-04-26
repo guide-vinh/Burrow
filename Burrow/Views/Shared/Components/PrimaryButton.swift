@@ -6,6 +6,8 @@ struct PrimaryButton: View {
     let icon: String?
     let action: () -> Void
 
+    @Environment(\.isEnabled) private var isEnabled
+
     init(_ title: String, icon: String? = nil, action: @escaping () -> Void) {
         self.title = title
         self.icon = icon
@@ -23,6 +25,7 @@ struct PrimaryButton: View {
             .background(Color.accentPrimary)
             .foregroundStyle(Color.fgInverse)
             .clipShape(RoundedRectangle(cornerRadius: Radius.md, style: .continuous))
+            .opacity(isEnabled ? 1.0 : 0.4)
         }
         .buttonStyle(.plain)
     }

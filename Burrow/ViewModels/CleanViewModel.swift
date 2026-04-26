@@ -21,6 +21,15 @@ final class CleanViewModel: ObservableObject {
     @Published private(set) var isScanning: Bool = false
     @Published private(set) var isApplying: Bool = false
     @Published private(set) var lastError: String? = nil
+    @Published private(set) var lastPreview: PreviewSummary? = nil
+
+    /// Snapshot of the most recent dry-run apply, surfaced in the
+    /// footer so users can see "what would have happened" was actually
+    /// computed. Cleared on next scan or on a real apply.
+    struct PreviewSummary: Equatable {
+        let items: Int
+        let bytes: Int64
+    }
 
     // MARK: - Dependencies
 
@@ -96,6 +105,7 @@ final class CleanViewModel: ObservableObject {
         }
         self.scanResults = dict
         self.lastError = nil
+        self.lastPreview = nil  // a fresh scan invalidates any prior preview
 
         let totalBytes = dict.values.reduce(0) { $0 + $1.totalBytes }
         logger.info(
@@ -121,12 +131,16 @@ final class CleanViewModel: ObservableObject {
         defer { isApplying = false }
 
         var encounteredError = false
+        var totalBytes: Int64 = 0
+        var totalItems = 0
 
         for id in selectedCategoryIds {
             guard let result = scanResults[id] else { continue }
 
             do {
-                try await engine.apply(result, dryRun: dryRun)
+                let bytes = try await engine.apply(result, dryRun: dryRun)
+                totalBytes += bytes
+                totalItems += result.items.count
                 logger.info(
                     "Apply succeeded for \(id, privacy: .public) (dryRun=\(self.dryRun, privacy: .public))"
                 )
@@ -142,7 +156,10 @@ final class CleanViewModel: ObservableObject {
         if !dryRun && !encounteredError {
             scanResults = [:]
             selectedCategoryIds = []
+            lastPreview = nil
             logger.info("Real apply completed cleanly; scan results and selection cleared")
+        } else if dryRun && !encounteredError {
+            lastPreview = PreviewSummary(items: totalItems, bytes: totalBytes)
         }
     }
 
