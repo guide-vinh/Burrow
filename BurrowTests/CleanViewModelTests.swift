@@ -130,6 +130,34 @@ final class CleanViewModelTests: XCTestCase {
         XCTAssertEqual(vm.scanResults.count, 1)
         // Selection preserved
         XCTAssertFalse(vm.selectedCategoryIds.isEmpty)
+        // Banner surfaces the preview total
+        let banner = try XCTUnwrap(vm.previewBanner, "previewBanner should be set after dry run")
+        XCTAssertEqual(banner.items, 3)
+        XCTAssertGreaterThanOrEqual(banner.bytes, 2600)
+    }
+
+    func testScanClearsPreviewBanner() async throws {
+        _ = try makeThreeFiles()
+        let vm = CleanViewModel(catalog: syntheticCatalog(), log: freshLog())
+        await vm.scan()
+        vm.dryRun = true
+        await vm.apply()
+        XCTAssertNotNil(vm.previewBanner)
+
+        await vm.scan()
+        XCTAssertNil(vm.previewBanner, "fresh scan should drop the prior preview banner")
+    }
+
+    func testDismissPreviewBannerClearsIt() async throws {
+        _ = try makeThreeFiles()
+        let vm = CleanViewModel(catalog: syntheticCatalog(), log: freshLog())
+        await vm.scan()
+        vm.dryRun = true
+        await vm.apply()
+        XCTAssertNotNil(vm.previewBanner)
+
+        vm.dismissPreviewBanner()
+        XCTAssertNil(vm.previewBanner)
     }
 
     func testApplyRealClearsScanResultsAndSelection() async throws {
@@ -150,6 +178,8 @@ final class CleanViewModelTests: XCTestCase {
         XCTAssertTrue(vm.scanResults.isEmpty)
         // Selection cleared after real apply
         XCTAssertTrue(vm.selectedCategoryIds.isEmpty)
+        // Real apply does not surface a preview banner
+        XCTAssertNil(vm.previewBanner)
     }
 
     func testApplyBeforeLoadCatalogSetsLastError() async throws {

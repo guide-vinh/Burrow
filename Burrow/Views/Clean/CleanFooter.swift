@@ -8,19 +8,11 @@ struct CleanFooter: View {
 
     var body: some View {
         HStack(spacing: Spacing.md) {
-            VStack(alignment: .leading, spacing: 2) {
-                if !vm.scanResults.isEmpty {
-                    Text("\(vm.selectedItemCount) items selected · \(vm.selectedTotalBytes, format: .byteCount(style: .file))")
-                        .font(.bodyS)
-                        .foregroundStyle(Color.fgSecondary)
-                        .monospacedDigit()
-                }
-                if let preview = vm.lastPreview {
-                    Text("Last preview: \(preview.items) items · \(preview.bytes, format: .byteCount(style: .file))")
-                        .font(.captionS)
-                        .foregroundStyle(Color.fgMuted)
-                        .monospacedDigit()
-                }
+            if !vm.scanResults.isEmpty {
+                Text(selectionSummary)
+                    .font(.bodyS)
+                    .foregroundStyle(Color.fgSecondary)
+                    .monospacedDigit()
             }
             Spacer()
             Group {
@@ -34,6 +26,16 @@ struct CleanFooter: View {
         }
         .padding(.horizontal, Spacing.xl)
         .padding(.vertical, Spacing.md)
+    }
+
+    private var selectionSummary: String {
+        let cats = vm.selectedCategoryCount
+        let paths = vm.selectedItemCount
+        let bytes = vm.selectedTotalBytes
+            .formatted(.byteCount(style: .file))
+        let catWord = cats == 1 ? "category" : "categories"
+        let pathWord = paths == 1 ? "path" : "paths"
+        return "\(cats) \(catWord) · \(paths) \(pathWord) · \(bytes)"
     }
 
     private func applyAction() {

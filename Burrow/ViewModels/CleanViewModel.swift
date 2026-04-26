@@ -21,11 +21,11 @@ final class CleanViewModel: ObservableObject {
     @Published private(set) var isScanning: Bool = false
     @Published private(set) var isApplying: Bool = false
     @Published private(set) var lastError: String? = nil
-    @Published private(set) var lastPreview: PreviewSummary? = nil
+    @Published private(set) var previewBanner: PreviewSummary? = nil
 
-    /// Snapshot of the most recent dry-run apply, surfaced in the
-    /// footer so users can see "what would have happened" was actually
-    /// computed. Cleared on next scan or on a real apply.
+    /// Snapshot of the most recent dry-run apply, shown as a transient
+    /// banner at the top of the Clean tab. Auto-dismisses 5s after
+    /// being set; also cleared on next scan or on a real apply.
     struct PreviewSummary: Equatable {
         let items: Int
         let bytes: Int64
@@ -35,6 +35,7 @@ final class CleanViewModel: ObservableObject {
 
     private var engine: RuleEngine?
     private let log: OperationLog
+    private var bannerDismissTask: Task<Void, Never>?
 
     // MARK: - Init
 
@@ -105,7 +106,7 @@ final class CleanViewModel: ObservableObject {
         }
         self.scanResults = dict
         self.lastError = nil
-        self.lastPreview = nil  // a fresh scan invalidates any prior preview
+        dismissPreviewBanner()  // a fresh scan invalidates any prior preview
 
         let totalBytes = dict.values.reduce(0) { $0 + $1.totalBytes }
         logger.info(
@@ -156,17 +157,44 @@ final class CleanViewModel: ObservableObject {
         if !dryRun && !encounteredError {
             scanResults = [:]
             selectedCategoryIds = []
-            lastPreview = nil
+            dismissPreviewBanner()
             logger.info("Real apply completed cleanly; scan results and selection cleared")
         } else if dryRun && !encounteredError {
-            lastPreview = PreviewSummary(items: totalItems, bytes: totalBytes)
+            previewBanner = PreviewSummary(items: totalItems, bytes: totalBytes)
+            scheduleBannerDismiss()
+        }
+    }
+
+    // MARK: - Banner
+
+    /// User taps the × on the banner.
+    func dismissPreviewBanner() {
+        bannerDismissTask?.cancel()
+        bannerDismissTask = nil
+        previewBanner = nil
+    }
+
+    /// URL of the operations log file, exposed so the view can hand it
+    /// to `Environment(\.openURL)` or `NSWorkspace.open(_:)`.
+    var operationsLogURL: URL {
+        log.logURL
+    }
+
+    /// Auto-dismiss the banner after a short delay so it doesn't sit
+    /// indefinitely. Cancellable — repeated previews reset the timer.
+    private func scheduleBannerDismiss() {
+        bannerDismissTask?.cancel()
+        bannerDismissTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 5_000_000_000)
+            guard !Task.isCancelled else { return }
+            await MainActor.run { self?.previewBanner = nil }
         }
     }
 
     // MARK: - Computed
 
     /// Total bytes across all scanned items belonging to selected
-    /// categories. Drives the footer "X items selected · N GB" text.
+    /// categories. Drives the footer total.
     var selectedTotalBytes: Int64 {
         selectedCategoryIds
             .compactMap { scanResults[$0]?.totalBytes }
@@ -179,8 +207,14 @@ final class CleanViewModel: ObservableObject {
         scanResults.values.reduce(0) { $0 + $1.totalBytes }
     }
 
-    /// Number of ScanItems across all selected categories. Drives the
-    /// footer "X items selected" count.
+    /// Number of selected categories — i.e. how many checkboxes the
+    /// user ticked. Drives the footer's "N categories" label.
+    var selectedCategoryCount: Int {
+        selectedCategoryIds.count
+    }
+
+    /// Number of underlying ScanItems (filesystem paths) across all
+    /// selected categories. Drives the footer's "M paths" label.
     var selectedItemCount: Int {
         selectedCategoryIds
             .compactMap { scanResults[$0]?.items.count }
