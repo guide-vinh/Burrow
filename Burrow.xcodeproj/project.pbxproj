@@ -28,7 +28,6 @@
 				Info.plist,
 				Views/Analyze/.gitkeep,
 				Views/Status/.gitkeep,
-				Views/Uninstall/.gitkeep,
 			);
 			target = 1A0000000000000000000020 /* Burrow */;
 		};
