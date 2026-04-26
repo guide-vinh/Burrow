@@ -52,6 +52,43 @@ documented in [SPEC.md §5](SPEC.md#5-rule-catalog-schema).
 (Smart Uninstall) and Phase 3 (Disk Analyzer with treemap) are the
 biggest open chunks.
 
+## Known Phase 1 limitations
+
+Things that are intentionally deferred or scoped out for the v0.1.0
+release. Each is tracked here so contributors don't re-discover them.
+
+- **Catalog is a 2-category stub** (Chrome cache + system logs). The
+  full 40+ category catalog is the highest-value Phase 1 follow-up;
+  contributions welcome via JSON.
+- **`requiresAppQuit` warn-before-delete** is parsed by the catalog
+  loader but the engine doesn't gate on it yet. Phase 5 polish adds
+  a confirmation sheet before deleting from a running app's data.
+- **`.command` rule kind** parses cleanly but is skipped at scan time
+  with a warning log. Execution of external programs (e.g.
+  `brew cleanup`) lands with the privileged helper in Phase 3.
+- **PathResolver glob** supports a single `*` per segment only; no `**`
+  recursive globbing. Recursive scans (e.g. all `node_modules` under
+  `~`) are deferred to Phase 2's user-configurable scan roots.
+- **`exclude` paths** are matched byte-equal against the resolved file
+  paths. macOS-canonicalized paths (`/private/var` instead of `/var`)
+  are not normalized; production catalog excludes target
+  `~/Library/...` which doesn't symlink, so this is unlikely to bite —
+  but flagged for the record.
+- **Operation log write failures** are caught and logged but do not
+  stop the apply loop. Audit-trail gaps are possible if the log file
+  cannot be written; the app continues to honor the user's intent.
+- **`SafeFileOps.permanentlyDelete`** exists for the Empty Trash flow
+  but has no UI consumer or test in Phase 1.
+- **`FullDiskAccess.openSystemSettings()`** is not unit-tested — it
+  opens a real System Settings window every run.
+- **No window-state persistence** — sidebar selection and window
+  position reset on every launch.
+- **`@main App` body** can't be exercised by unit tests; verification
+  is `make run` + visual inspection until UI tests are added in
+  Phase 5.
+- **Empty scan result** shows "Zero kB" instead of `—` in the size
+  column. UX nit, fix in Phase 5 polish.
+
 ## Credits
 
 - [tw93/Mole](https://github.com/tw93/Mole) — the path catalog in this
