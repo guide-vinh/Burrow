@@ -26,18 +26,6 @@
       "rules": [
         { "kind": "directoryContents", "path": "~/Library/Logs", "olderThanDays": 14 }
       ]
-    },
-    {
-      "id": "developer.node_modules",
-      "title": "node_modules",
-      "summary": "Stale npm dependency trees in project directories",
-      "group": "developer",
-      "icon": "shippingbox",
-      "risk": "high",
-      "defaultEnabled": false,
-      "rules": [
-        { "kind": "glob", "path": "~/Developer/*/node_modules", "olderThanDays": 30 }
-      ]
     }
   ]
 }
