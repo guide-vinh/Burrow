@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// Sidebar shell. Holds the four primary destinations (Clean, Uninstall,
@@ -7,6 +8,7 @@ import SwiftUI
 struct RootView: View {
 
     @State private var selection: SidebarDestination = .clean
+    @State private var showFDASheet = false
 
     var body: some View {
         NavigationView {
@@ -15,6 +17,19 @@ struct RootView: View {
         }
         .navigationViewStyle(.columns)
         .frame(minWidth: 980, minHeight: 640)
+        .task { await refreshFDAState() }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            Task { await refreshFDAState() }
+        }
+        .sheet(isPresented: $showFDASheet) {
+            FullDiskAccessSheet(isPresented: $showFDASheet)
+        }
+    }
+
+    @MainActor
+    private func refreshFDAState() async {
+        let granted = FullDiskAccess.probe()
+        showFDASheet = !granted
     }
 
     // MARK: - Sidebar

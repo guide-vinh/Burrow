@@ -81,6 +81,12 @@ release. Each is tracked here so contributors don't re-discover them.
   but has no UI consumer or test in Phase 1.
 - **`FullDiskAccess.openSystemSettings()`** is not unit-tested — it
   opens a real System Settings window every run.
+- **TCC permissions need a process restart** to take effect. macOS
+  may show "Quit & Reopen" when the user toggles FDA, but ad-hoc
+  signed dev builds often don't relaunch cleanly. The onboarding
+  sheet exposes a "Quit Burrow" button so the user can quit + manually
+  relaunch in two clicks. Signed/notarized release builds (Task 10)
+  should let the system "Quit & Reopen" handle this automatically.
 - **No window-state persistence** — sidebar selection and window
   position reset on every launch.
 - **`@main App` body** can't be exercised by unit tests; verification
