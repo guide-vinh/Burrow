@@ -30,6 +30,25 @@ struct LeftoverPattern: Codable, Hashable {
         case highValue
     }
 
+    /// Convenience memberwise init. The custom `init(from:)` below
+    /// suppresses Swift's synthesized memberwise init, so we expose
+    /// one manually for tests and Preview blocks.
+    init(
+        path: String,
+        matchType: MatchType = .exact,
+        risk: Risk,
+        category: String,
+        needsPrivilege: Bool? = nil,
+        description: String
+    ) {
+        self.path = path
+        self.matchType = matchType
+        self.risk = risk
+        self.category = category
+        self.needsPrivilege = needsPrivilege
+        self.description = description
+    }
+
     private enum CodingKeys: String, CodingKey {
         case path, matchType, risk, category, needsPrivilege, description
     }

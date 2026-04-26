@@ -3,7 +3,7 @@ import SwiftUI
 /// Transient confirmation that a dry-run apply ran. Auto-dismissed by
 /// the view-model 5 seconds after appearing, or manually via the ×.
 struct PreviewBanner: View {
-    let summary: CleanViewModel.PreviewSummary
+    let summary: PreviewSummary
     let onShowInFinder: () -> Void
     let onDismiss: () -> Void
 

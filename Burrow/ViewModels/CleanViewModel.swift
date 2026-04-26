@@ -23,14 +23,6 @@ final class CleanViewModel: ObservableObject {
     @Published private(set) var lastError: String? = nil
     @Published private(set) var previewBanner: PreviewSummary? = nil
 
-    /// Snapshot of the most recent dry-run apply, shown as a transient
-    /// banner at the top of the Clean tab. Auto-dismisses 5s after
-    /// being set; also cleared on next scan or on a real apply.
-    struct PreviewSummary: Equatable {
-        let items: Int
-        let bytes: Int64
-    }
-
     // MARK: - Dependencies
 
     private var engine: RuleEngine?

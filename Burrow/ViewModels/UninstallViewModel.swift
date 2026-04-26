@@ -27,15 +27,6 @@ final class UninstallViewModel: ObservableObject {
     @Published private(set) var lastError: String?
     @Published private(set) var previewBanner: PreviewSummary?
 
-    /// Snapshot of the most recent dry-run uninstall, shown as a
-    /// transient banner. Auto-dismissed 5s after being set.
-    /// Parallel to `CleanViewModel.PreviewSummary`; Task 4 may
-    /// promote this to a shared model.
-    struct PreviewSummary: Equatable {
-        let items: Int
-        let bytes: Int64
-    }
-
     // MARK: - Dependencies
 
     private let discoverApps: () async -> [InstalledApp]
