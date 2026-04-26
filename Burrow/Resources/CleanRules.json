@@ -12,19 +12,196 @@
       "requiresAppQuit": "com.google.Chrome",
       "rules": [
         { "kind": "directoryContents", "path": "~/Library/Caches/Google/Chrome" },
-        { "kind": "glob",              "path": "~/Library/Application Support/Google/Chrome/*/Cache" }
+        { "kind": "glob",              "path": "~/Library/Application Support/Google/Chrome/*/Cache" },
+        { "kind": "glob",              "path": "~/Library/Application Support/Google/Chrome/*/Code Cache" },
+        { "kind": "glob",              "path": "~/Library/Application Support/Google/Chrome/*/GPUCache" }
+      ]
+    },
+    {
+      "id": "browser.safari",
+      "title": "Safari",
+      "summary": "Webpage cache and WebKit network cache",
+      "group": "browser",
+      "icon": "compass",
+      "risk": "low",
+      "defaultEnabled": true,
+      "requiresAppQuit": "com.apple.Safari",
+      "rules": [
+        { "kind": "directoryContents", "path": "~/Library/Caches/com.apple.Safari" },
+        { "kind": "directoryContents", "path": "~/Library/Caches/com.apple.WebKit.Networking" }
+      ]
+    },
+    {
+      "id": "browser.firefox",
+      "title": "Firefox",
+      "summary": "Profile cache and startup cache",
+      "group": "browser",
+      "icon": "flame",
+      "risk": "low",
+      "defaultEnabled": true,
+      "requiresAppQuit": "org.mozilla.firefox",
+      "rules": [
+        { "kind": "directoryContents", "path": "~/Library/Caches/Firefox" },
+        { "kind": "glob",              "path": "~/Library/Application Support/Firefox/Profiles/*/cache2" },
+        { "kind": "glob",              "path": "~/Library/Application Support/Firefox/Profiles/*/startupCache" }
+      ]
+    },
+    {
+      "id": "browser.brave",
+      "title": "Brave Browser",
+      "summary": "Cache, code cache, GPU cache",
+      "group": "browser",
+      "icon": "globe",
+      "risk": "low",
+      "defaultEnabled": true,
+      "requiresAppQuit": "com.brave.Browser",
+      "rules": [
+        { "kind": "directoryContents", "path": "~/Library/Caches/BraveSoftware/Brave-Browser" },
+        { "kind": "glob",              "path": "~/Library/Application Support/BraveSoftware/Brave-Browser/*/Cache" },
+        { "kind": "glob",              "path": "~/Library/Application Support/BraveSoftware/Brave-Browser/*/Code Cache" }
+      ]
+    },
+    {
+      "id": "browser.arc",
+      "title": "Arc",
+      "summary": "Cache and GPU cache",
+      "group": "browser",
+      "icon": "globe",
+      "risk": "low",
+      "defaultEnabled": true,
+      "requiresAppQuit": "company.thebrowser.Browser",
+      "rules": [
+        { "kind": "directoryContents", "path": "~/Library/Caches/company.thebrowser.Browser" },
+        { "kind": "glob",              "path": "~/Library/Application Support/Arc/User Data/*/Cache" }
+      ]
+    },
+    {
+      "id": "developer.xcode_deriveddata",
+      "title": "Xcode DerivedData",
+      "summary": "Build outputs and indexes; safe but rebuild takes time",
+      "group": "developer",
+      "icon": "hammer",
+      "risk": "medium",
+      "defaultEnabled": false,
+      "rules": [
+        { "kind": "directoryContents", "path": "~/Library/Developer/Xcode/DerivedData" }
+      ]
+    },
+    {
+      "id": "developer.npm_cache",
+      "title": "npm cache",
+      "summary": "npm download cache; re-downloaded on next install",
+      "group": "developer",
+      "icon": "package",
+      "risk": "low",
+      "defaultEnabled": true,
+      "rules": [
+        { "kind": "directoryContents", "path": "~/.npm/_cacache" }
+      ]
+    },
+    {
+      "id": "developer.cocoapods_cache",
+      "title": "CocoaPods cache",
+      "summary": "Pod download cache",
+      "group": "developer",
+      "icon": "shippingbox",
+      "risk": "low",
+      "defaultEnabled": true,
+      "rules": [
+        { "kind": "directoryContents", "path": "~/Library/Caches/CocoaPods" }
+      ]
+    },
+    {
+      "id": "developer.homebrew_cache",
+      "title": "Homebrew cache",
+      "summary": "Bottle and download cache",
+      "group": "developer",
+      "icon": "beer",
+      "risk": "low",
+      "defaultEnabled": true,
+      "rules": [
+        { "kind": "directoryContents", "path": "~/Library/Caches/Homebrew" }
+      ]
+    },
+    {
+      "id": "developer.pip_cache",
+      "title": "pip cache",
+      "summary": "Python pip download cache",
+      "group": "developer",
+      "icon": "package",
+      "risk": "low",
+      "defaultEnabled": true,
+      "rules": [
+        { "kind": "directoryContents", "path": "~/Library/Caches/pip" }
+      ]
+    },
+    {
+      "id": "app.slack",
+      "title": "Slack",
+      "summary": "Cache, service worker, and code cache",
+      "group": "app",
+      "icon": "message",
+      "risk": "low",
+      "defaultEnabled": true,
+      "requiresAppQuit": "com.tinyspeck.slackmacgap",
+      "rules": [
+        { "kind": "directoryContents", "path": "~/Library/Caches/com.tinyspeck.slackmacgap" },
+        { "kind": "directoryContents", "path": "~/Library/Application Support/Slack/Cache" },
+        { "kind": "directoryContents", "path": "~/Library/Application Support/Slack/Code Cache" },
+        { "kind": "directoryContents", "path": "~/Library/Application Support/Slack/Service Worker/CacheStorage" }
+      ]
+    },
+    {
+      "id": "app.spotify",
+      "title": "Spotify",
+      "summary": "Streaming cache and download cache",
+      "group": "app",
+      "icon": "music",
+      "risk": "low",
+      "defaultEnabled": true,
+      "requiresAppQuit": "com.spotify.client",
+      "rules": [
+        { "kind": "directoryContents", "path": "~/Library/Caches/com.spotify.client" },
+        { "kind": "directoryContents", "path": "~/Library/Application Support/Spotify/PersistentCache/Storage" }
+      ]
+    },
+    {
+      "id": "app.discord",
+      "title": "Discord",
+      "summary": "Cache and code cache",
+      "group": "app",
+      "icon": "message",
+      "risk": "low",
+      "defaultEnabled": true,
+      "requiresAppQuit": "com.hnc.Discord",
+      "rules": [
+        { "kind": "directoryContents", "path": "~/Library/Caches/com.hnc.Discord" },
+        { "kind": "directoryContents", "path": "~/Library/Application Support/discord/Cache" },
+        { "kind": "directoryContents", "path": "~/Library/Application Support/discord/Code Cache" }
       ]
     },
     {
       "id": "system.logs",
       "title": "System Logs",
-      "summary": "User-level diagnostic logs",
+      "summary": "User-level diagnostic logs older than 14 days",
       "group": "system",
       "icon": "doc-text",
       "risk": "low",
       "defaultEnabled": true,
       "rules": [
         { "kind": "directoryContents", "path": "~/Library/Logs", "olderThanDays": 14 }
+      ]
+    },
+    {
+      "id": "system.quicklook_thumbnails",
+      "title": "QuickLook Thumbnails",
+      "summary": "macOS file preview cache; regenerated on demand",
+      "group": "system",
+      "icon": "eye",
+      "risk": "low",
+      "defaultEnabled": true,
+      "rules": [
+        { "kind": "directoryContents", "path": "~/Library/Caches/com.apple.QuickLook.thumbnailcache" }
       ]
     }
   ]
