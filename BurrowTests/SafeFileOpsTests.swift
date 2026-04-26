@@ -64,6 +64,43 @@ final class SafeFileOpsTests: XCTestCase {
         }
     }
 
+    // MARK: - .app carve-out (Phase 2 Uninstall)
+
+    func testValidateAllowsDirectAppChildOfApplications() throws {
+        // Safari.app ships with macOS — the carve-out must allow it
+        // even though /Applications is in the deny-list.
+        let url = URL(fileURLWithPath: "/Applications/Safari.app")
+        try XCTSkipIf(
+            !FileManager.default.fileExists(atPath: url.path),
+            "Safari not installed at /Applications/Safari.app"
+        )
+        XCTAssertNoThrow(try SafeFileOps.validate(url))
+    }
+
+    func testValidateRejectsContentsInsideAppBundle() throws {
+        // The carve-out is only for the .app boundary — anything DEEPER
+        // is still protected so we never accidentally reach inside.
+        let url = URL(fileURLWithPath: "/Applications/Safari.app/Contents/Info.plist")
+        try XCTSkipIf(
+            !FileManager.default.fileExists(atPath: url.path),
+            "Safari Info.plist not found"
+        )
+        XCTAssertThrowsError(try SafeFileOps.validate(url)) { err in
+            guard case SafeFileError.protectedPath = err else {
+                return XCTFail("expected protectedPath, got \(err)")
+            }
+        }
+    }
+
+    func testValidateRejectsApplicationsRootItself() {
+        let url = URL(fileURLWithPath: "/Applications")
+        XCTAssertThrowsError(try SafeFileOps.validate(url)) { err in
+            guard case SafeFileError.protectedPath = err else {
+                return XCTFail("expected protectedPath, got \(err)")
+            }
+        }
+    }
+
     // MARK: - size
 
     func testSizeOfFileMatchesByteCount() throws {

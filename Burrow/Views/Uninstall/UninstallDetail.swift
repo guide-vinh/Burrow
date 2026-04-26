@@ -31,7 +31,7 @@ struct UninstallDetail: View {
             if let summary = vm.previewBanner {
                 PreviewBanner(
                     summary: summary,
-                    onShowInFinder: revealLog,
+                    onShowInFinder: { revealApp(app) },
                     onDismiss: { vm.dismissPreviewBanner() }
                 )
                 Divider().background(Color.borderSubtle)
@@ -170,7 +170,11 @@ struct UninstallDetail: View {
         Task { await vm.uninstall() }
     }
 
-    private func revealLog() {
-        NSWorkspace.shared.activateFileViewerSelecting([vm.operationsLogURL])
+    /// Reveal the .app bundle being uninstalled in Finder so the user
+    /// can sanity-check which app this is before committing. Falls back
+    /// to the operations log if for some reason no app is selected
+    /// (shouldn't happen at banner-display time).
+    private func revealApp(_ app: InstalledApp) {
+        NSWorkspace.shared.activateFileViewerSelecting([app.bundleURL])
     }
 }

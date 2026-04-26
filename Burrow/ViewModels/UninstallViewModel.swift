@@ -61,7 +61,10 @@ final class UninstallViewModel: ObservableObject {
 
         let discovered = await discoverApps()
         self.apps = discovered
-        self.lastError = nil
+        // NOTE: don't clear `lastError` here — loadApps is a refresh
+        // (called on init AND post-uninstall) so an in-flight uninstall
+        // error must survive the re-discover. `select()` resets state
+        // when the user picks a fresh app.
         logger.info("Loaded \(discovered.count, privacy: .public) installed apps")
     }
 
@@ -156,7 +159,7 @@ final class UninstallViewModel: ObservableObject {
             }
         }
 
-        if !dryRun && !encounteredError {
+        if !dryRun && totalItems > 0 {
             leftovers = []
             checkedURLs = []
             if let app = selectedApp,
@@ -166,9 +169,9 @@ final class UninstallViewModel: ObservableObject {
             await loadApps()
             dismissPreviewBanner()
             logger.info(
-                "Real uninstall completed cleanly; refreshed app list (\(self.apps.count, privacy: .public) apps remain)"
+                "Real uninstall completed; refreshed app list (\(self.apps.count, privacy: .public) apps remain, encounteredError=\(encounteredError, privacy: .public))"
             )
-        } else if dryRun && !encounteredError {
+        } else if dryRun && totalItems > 0 {
             previewBanner = PreviewSummary(items: totalItems, bytes: totalBytes)
             scheduleBannerDismiss()
         }

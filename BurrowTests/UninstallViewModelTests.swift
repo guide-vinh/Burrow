@@ -391,6 +391,39 @@ final class UninstallViewModelTests: XCTestCase {
         XCTAssertNil(vm.previewBanner, "banner should be nil after selecting a different app")
     }
 
+    // MARK: - Partial-success banner
+
+    func testUninstallShowsBannerOnPartialSuccess() async throws {
+        // One real fixture file + one nonexistent path. dryRun=true →
+        // valid one returns size, nonexistent throws doesNotExist.
+        // Banner must appear because some items succeeded.
+        let goodURL = try writeFile("good.bin", bytes: 100)
+        let badURL = fixture.appendingPathComponent("never-existed.bin")
+        let appURL = fixture.appendingPathComponent("placeholder.app")
+        try FileManager.default.createDirectory(at: appURL, withIntermediateDirectories: true)
+
+        let app = makeApp(bundleURL: appURL)
+        let goodMatch = makeMatch(url: goodURL, bytes: 100, risk: .safe)
+        let badMatch = makeMatch(url: badURL, bytes: 0, risk: .safe)
+
+        let vm = UninstallViewModel(
+            discoverApps: { [app] },
+            findLeftovers: { _ in [goodMatch, badMatch] },
+            log: freshLog()
+        )
+        await vm.loadApps()
+        await vm.select(app)
+        vm.dryRun = true
+        await vm.uninstall()
+
+        XCTAssertNotNil(
+            vm.previewBanner,
+            "banner must appear even when one URL fails — partial success counts"
+        )
+        XCTAssertEqual(vm.previewBanner?.items, 2, "appURL + goodURL succeeded")
+        XCTAssertNotNil(vm.lastError, "lastError reflects the failed badURL")
+    }
+
     // MARK: - 12. Operations log URL matches injected log
 
     func testOperationsLogURLMatchesInjectedLog() throws {

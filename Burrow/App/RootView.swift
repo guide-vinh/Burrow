@@ -87,7 +87,7 @@ struct RootView: View {
     private var detail: some View {
         switch selection {
         case .clean:     CleanView()
-        case .uninstall: placeholder(for: .uninstall)
+        case .uninstall: UninstallView()
         case .analyze:   placeholder(for: .analyze)
         case .status:    placeholder(for: .status)
         }

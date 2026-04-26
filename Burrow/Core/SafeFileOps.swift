@@ -35,11 +35,21 @@ enum SafeFileOps {
 
     /// Throws if `url` is in the deny-list, equals a protected user-folder
     /// root, or does not exist.
+    ///
+    /// Carve-out for Phase 2 Uninstall: a direct `.app` child of one of
+    /// the well-known Applications roots (`/Applications`,
+    /// `/Applications/Utilities`, `~/Applications`) IS allowed even
+    /// though the parent root is in the deny-list. Anything DEEPER
+    /// (e.g. files inside the bundle) remains rejected.
     static func validate(_ url: URL) throws {
         let path = url.standardizedFileURL.path
 
         guard FileManager.default.fileExists(atPath: path) else {
             throw SafeFileError.doesNotExist(url)
+        }
+
+        if isAllowedAppBundleChild(path: path) {
+            return
         }
 
         for protected in protectedSystemPaths {
@@ -55,6 +65,19 @@ enum SafeFileOps {
                 throw SafeFileError.protectedPath(url)
             }
         }
+    }
+
+    /// True if `path` is exactly `<appRoot>/<Something>.app` — i.e. an
+    /// installed application bundle the user can legitimately uninstall.
+    private static func isAllowedAppBundleChild(path: String) -> Bool {
+        guard path.hasSuffix(".app") else { return false }
+        let parent = (path as NSString).deletingLastPathComponent
+        let appRoots = [
+            "/Applications",
+            "/Applications/Utilities",
+            NSHomeDirectory() + "/Applications",
+        ]
+        return appRoots.contains(parent)
     }
 
     /// Moves `url` to the user's Trash via `NSWorkspace.recycle`. Returns
