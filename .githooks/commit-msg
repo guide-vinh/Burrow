@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Enforces Burrow commit message format.
-#   Subject: <type>: <summary>   (subject <= 50 chars)
+#   Subject: <type>[(<scope>)][!]: <summary>   (subject <= 72 chars)
 #   Types:   feat, fix, chore, refactor, test, docs, style, add, improve
+#   Scope:   optional Conventional Commits scope, lowercase a-z/0-9/-
+#   Bang:    optional ! before the colon to flag breaking change
 # Install once per clone:
 #   git config core.hooksPath .githooks
 
@@ -15,17 +17,17 @@ case "$subject" in
   "Merge "*|"Revert "*|"fixup!"*|"squash!"*|"amend!"*) exit 0 ;;
 esac
 
-types_re='^(feat|fix|chore|refactor|test|docs|style|add|improve): .+'
+types_re='^(feat|fix|chore|refactor|test|docs|style|add|improve)(\([a-z0-9-]+\))?!?: .+'
 
 if ! printf '%s' "$subject" | grep -Eq "$types_re"; then
-  echo "commit-msg: subject must match '<type>: <summary>'"
+  echo "commit-msg: subject must match '<type>[(<scope>)][!]: <summary>'"
   echo "  types: feat, fix, chore, refactor, test, docs, style, add, improve"
   echo "  got:   '$subject'"
   exit 1
 fi
 
-if [ "${#subject}" -gt 50 ]; then
-  echo "commit-msg: subject is ${#subject} chars (max 50)"
+if [ "${#subject}" -gt 72 ]; then
+  echo "commit-msg: subject is ${#subject} chars (max 72)"
   echo "  got: '$subject'"
   exit 1
 fi
