@@ -6,10 +6,22 @@ import SwiftUI
 /// footer with Preview / Uninstall button.
 struct UninstallDetail: View {
     @ObservedObject var vm: UninstallViewModel
+    @State private var showConfirmAlert = false
 
     var body: some View {
         if let app = vm.selectedApp {
             content(for: app)
+                .alert(
+                    "Uninstall \(app.name)?",
+                    isPresented: $showConfirmAlert
+                ) {
+                    Button("Cancel", role: .cancel) {}
+                    Button("Move to Trash", role: .destructive) {
+                        Task { await vm.uninstall() }
+                    }
+                } message: {
+                    Text(confirmMessage)
+                }
         } else {
             EmptyState(
                 icon: "trash",
@@ -20,6 +32,13 @@ struct UninstallDetail: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color.surfacePrimary)
         }
+    }
+
+    private var confirmMessage: String {
+        let count = vm.selectedItemCount
+        let word = count == 1 ? "item" : "items"
+        let bytes = vm.selectedTotalBytes.formatted(.byteCount(style: .file))
+        return "\(count) \(word) (\(bytes)) will move to Trash."
     }
 
     @ViewBuilder
@@ -138,9 +157,14 @@ struct UninstallDetail: View {
             Spacer()
             Group {
                 if vm.dryRun {
-                    OutlineButton("Preview", icon: "eye", action: applyAction)
+                    OutlineButton("Preview", icon: "eye") {
+                        Task { await vm.uninstall() }
+                    }
                 } else {
-                    DestructiveButton("Uninstall", icon: "trash", action: applyAction)
+                    DestructiveButton("Uninstall", icon: "trash") {
+                        showConfirmAlert = true
+                    }
+                    .keyboardShortcut(.delete, modifiers: .command)
                 }
             }
             .disabled(vm.selectedItemCount == 0 || vm.isApplying)
@@ -164,10 +188,6 @@ struct UninstallDetail: View {
                 else    { vm.checkedURLs.remove(url) }
             }
         )
-    }
-
-    private func applyAction() {
-        Task { await vm.uninstall() }
     }
 
     /// Reveal the .app bundle being uninstalled in Finder so the user
