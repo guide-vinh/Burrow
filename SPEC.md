@@ -188,7 +188,12 @@ Three rule kinds:
 
 Optional fields per rule:
 
-- `olderThanDays` — only delete entries last accessed > N days ago
+- `olderThanDays` — only delete entries older than N days. Implementations
+  use `URLResourceValues.contentModificationDate` (mtime), not access
+  time: macOS does not reliably record atime on common filesystems
+  (it is often disabled or coalesced). Entries whose mtime cannot be
+  read are conservatively skipped — the engine never deletes a file
+  whose age it cannot determine.
 - `includeHidden` — include dotfiles (Trash needs this; Mole had a bug here)
 - `needsPrivilege` — requires root, route through helper tool
 - `exec`, `args` — for `kind: command`

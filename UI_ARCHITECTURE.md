@@ -41,13 +41,13 @@ Burrow/
 │   │
 │   ├── Core/
 │   │   ├── PathResolver.swift            ← tilde + glob expansion
-│   │   ├── SafeFileOps.swift             ← THE deletion gate
-│   │   └── FullDiskAccess.swift          ← FDA detection
+│   │   └── SafeFileOps.swift             ← THE deletion gate
 │   │
 │   ├── Services/
 │   │   ├── RuleEngine.swift              ← actor, scan + apply
 │   │   ├── AppScanner.swift              ← actor, Phase 2
-│   │   └── OperationLog.swift            ← actor, JSONL audit log
+│   │   ├── OperationLog.swift            ← actor, JSONL audit log
+│   │   └── FullDiskAccess.swift          ← FDA detection (per SPEC section 4)
 │   │
 │   ├── ViewModels/
 │   │   ├── CleanViewModel.swift          ← @MainActor ObservableObject

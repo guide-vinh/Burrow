@@ -1,5 +1,13 @@
 import Foundation
 
+/// One cleaning rule from `CleanRules.json`. Three kinds; see SPEC
+/// section 5 for the catalog schema.
+///
+/// `olderThanDays` is interpreted against the file's content
+/// modification date (mtime), not access time: macOS does not
+/// reliably record atime on common filesystems. Entries whose mtime
+/// cannot be read are conservatively skipped — RuleEngine never
+/// deletes a file whose age it cannot determine.
 enum CleanRule: Hashable, Codable {
     case directoryContents(path: String, olderThanDays: Int?, includeHidden: Bool?, needsPrivilege: Bool?)
     case glob(path: String, olderThanDays: Int?, includeHidden: Bool?, needsPrivilege: Bool?)

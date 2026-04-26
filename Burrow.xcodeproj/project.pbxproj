@@ -25,10 +25,7 @@
 		1A00000000000000000000E0 /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
-				Core/.gitkeep,
 				Info.plist,
-				Models/.gitkeep,
-				Services/.gitkeep,
 				ViewModels/.gitkeep,
 				Views/Analyze/.gitkeep,
 				Views/Clean/.gitkeep,
