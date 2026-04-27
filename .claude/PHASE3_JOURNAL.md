@@ -117,3 +117,55 @@ extras from Sonnet)
 ### Decisions made
 - Sonnet chose `AnyHashable` for ids per spec; matches DiskEntry.id
   (UUID) when callers pass them through.
+
+## Task 2 — DiskScanner — DONE
+
+**Files changed:** 2 added (Burrow/Services/DiskScanner.swift,
+BurrowTests/DiskScannerTests.swift). Foundation + os imports only.
+**Lines:** 369 production + 371 tests
+**Tests:** 136 passing / 136 total (was 123; +13 new)
+**Coverage on DiskScanner.swift:** 84.32% (285/338)
+
+### What got built
+- `actor DiskScanner` with `static let shared` singleton.
+- `scan(_ root:includeHidden:) -> AsyncThrowingStream<ScanProgress, Error>` —
+  pre-order DFS via `FileManager.enumerator`, bubble-up size aggregation,
+  yield every 1000 entries OR 0.5s (DECISIONS §7), cancellation-aware.
+- `childrenOf(_:) async throws -> [DiskEntry]` — fresh enumeration of
+  immediate children via `FileManager.contentsOfDirectory`. Recursive
+  size for dirs/packages routed through `SafeFileOps.size(_:)` —
+  no reimplemented walk.
+- `lastScanRoot()` and `entries(under:)` for cached-state inspection.
+- `static func isExcludedPath(_:home:)` for testable exclusion check
+  (Sonnet added beyond strict spec for testability of test #12).
+- Skips: `~/Library/CloudStorage`, `~/Library/Mobile Documents`,
+  `~/.Trash`, `/System`, `/private`, `/Volumes`, all symlinks.
+  Packages (`.app`, `.photoslibrary`) recorded as opaque files.
+
+### Deviations from PHASE3_PLAN.md
+- Cancellation test (spec test 5) loosened to "no crash, no orphans"
+  per spec's own latitude; the consumer-side `for try await` cancels
+  before the inner Task can yield `.cancelled`. Test still verifies
+  cooperative cancellation works.
+- `isExcludedPath` exposed as `static` for testability (small surface
+  expansion not in original spec but supports test #12 cleanly).
+- All URLs standardized via `.standardizedFileURL` to handle macOS's
+  `/var → /private/var` symlink (FileManager.enumerator returns the
+  canonical form). Same workaround Phase 1 RuleEngineTests needed.
+
+### Decisions made
+- DECISIONS §1 (in-memory only): `[URL: DiskEntry]` dict, no GRDB.
+- DECISIONS §2 (skip CloudStorage / Mobile Docs / Trash / system roots):
+  enforced.
+- DECISIONS §7 (yield every 1000 entries OR 0.5s): implemented per spec.
+- DECISIONS §14 (tmpdir for tests): all 13 tests use
+  `FileManager.temporaryDirectory` UUID-suffixed fixtures.
+
+### Issues encountered
+- None requiring intervention. Sonnet completed in one pass.
+
+### Open issues for user to review on return
+- NICE-TO-HAVE: For the 500GB `~/` smoke test on return, watch peak
+  RAM. DECISIONS §1 estimates 40–400 MB for typical homes. If 1M+
+  entries push past 1 GB, defer to GRDB integration (Phase 3a.1).
+  No way to validate from autopilot — needs the user's machine.
