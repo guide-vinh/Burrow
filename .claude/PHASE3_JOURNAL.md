@@ -169,3 +169,46 @@ BurrowTests/DiskScannerTests.swift). Foundation + os imports only.
   RAM. DECISIONS §1 estimates 40–400 MB for typical homes. If 1M+
   entries push past 1 GB, defer to GRDB integration (Phase 3a.1).
   No way to validate from autopilot — needs the user's machine.
+
+## Task 4 — AnalyzeViewModel — DONE
+
+**Files changed:** 2 added (Burrow/ViewModels/AnalyzeViewModel.swift,
+BurrowTests/AnalyzeViewModelTests.swift).
+**Lines:** 257 production + 508 tests
+**Tests:** 150 passing / 150 total (was 136; +14 new)
+**Coverage on AnalyzeViewModel.swift:** 79.85% (214/268)
+
+### What got built
+- `@MainActor final class AnalyzeViewModel: ObservableObject` with all
+  spec @Published properties (isScanning, scanProgress, scanError,
+  currentRoot, breadcrumb, visibleEntries, topLargest, oldestNeverOpened,
+  atimeAvailable).
+- Closure-injected `init(startScan:loadChildren:homeDirectory:)` mirroring
+  UninstallViewModel's testability pattern.
+- Actions: `scan`, `cancelScan`, `zoomInto`, `zoomOut`, `navigate(to:)`,
+  `revealInFinder`, `moveToTrash`.
+- `moveToTrash` routes through `SafeFileOps.trash` and writes
+  `OperationLogEntry` via `OperationLog.shared.append` per DECISIONS §9.
+- Atime degrades gracefully per DECISIONS §6: if all entries' atime
+  matches mtime within 1s, sets `atimeAvailable = false` and clears
+  `oldestNeverOpened`.
+- Top-100 truncation per DECISIONS §4 (synthetic "Other" entry deferred
+  to Phase 3a.1 per spec note).
+
+### Deviations from PHASE3_PLAN.md
+- Default `startScan` closure can't directly return `DiskScanner.shared.scan(url)`
+  because the actor-isolated call needs `await`. Wrapped in an outer
+  `AsyncThrowingStream { continuation in Task { for try await ... } }`
+  bridge. Functionally identical; pattern verified with the test suite.
+- `revealInFinder` is not unit-tested (calls `NSWorkspace.shared` which
+  needs a real display). Accounting for the 0% on that one method.
+- Truncation `>100` branch in `truncateForDisplay` not exercised by
+  tests (would need 101+ fixture entries). All other branches covered.
+
+### Decisions made
+- DECISIONS §6 (atime): `atimeAvailable` Boolean published so
+  InsightsPanel can show the explanatory message in Task 6.
+- Closure-injected dependencies pattern (UninstallViewModel precedent).
+
+### Issues encountered
+- None requiring intervention. Sonnet completed in one pass.
