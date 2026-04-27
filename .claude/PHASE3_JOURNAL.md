@@ -79,3 +79,41 @@ parallel but conservative review pressure favored serial.
 - NICE-TO-HAVE: Sonnet added `String`-rawValue to `ScanProgress.Phase`
   not in spec; if you'd rather it match the spec exactly, drop the
   `: String` and recompile.
+
+## Task 3 — Treemap algorithm — DONE
+
+**Files changed:** 2 added (Burrow/Algorithms/TreemapLayout.swift,
+BurrowTests/TreemapLayoutTests.swift). Algorithms/ directory created.
+**Lines:** 232 production + 250 tests
+**Tests:** 123 passing / 123 total (was 110; +13 new — 11 spec + 2
+extras from Sonnet)
+**Coverage on TreemapLayout.swift:** 83.53% (142/170)
+
+### What got built
+- `enum TreemapLayout` with nested `Item` (id + weight) and `Rect`
+  (id + x/y/w/h) types, both `Equatable` (custom `==` because
+  `AnyHashable` doesn't synthesize cleanly).
+- `static func layout(items:in:) -> [Rect]` implementing the squarified
+  algorithm per Bruls et al. 1999.
+- Internal `worstAspectRatio` helper using the max-area / min-area
+  shortcut (claimed O(1); actually O(n) but bounded by row size).
+- Internal `placeRow` returning `PlacedRow(rects, thickness)` for the
+  caller to advance bounds along the short axis.
+
+### Deviations from PHASE3_PLAN.md
+- Sonnet added a 12th test (`testTwoEqualWeightItems`) beyond the 11
+  spec'd. Harmless extra coverage of the equal-weight edge case.
+- Sonnet's report claimed 75% function coverage; actual line coverage
+  is 83.53% on the file. Both above the 75% floor.
+
+### Issues encountered
+- Sonnet's first attempt had horizontal/vertical strip orientation
+  inverted in `placeRow`. Caught immediately by `testSingleItemFillsBounds`
+  + `testAllRectsWithinBounds`. Fixed in pass 2. ≤ 1 retry.
+- `xcresult` write failures during initial coverage extraction (mkstemp
+  errors) — same cosmetic issue as Task 1; cleared by deleting and
+  re-running tests. No impact on test correctness.
+
+### Decisions made
+- Sonnet chose `AnyHashable` for ids per spec; matches DiskEntry.id
+  (UUID) when callers pass them through.
