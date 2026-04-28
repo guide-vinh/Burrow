@@ -3,9 +3,9 @@
 > Native macOS cleaner inspired by [tw93/Mole](https://github.com/tw93/Mole).
 > Trash-first, JSON-driven, under 10 MB, runs on macOS 12+.
 
-**Status:** Phases 1–3a complete (Clean, Uninstall, Analyze). See
-[SPEC.md](SPEC.md) and [ROADMAP.md](ROADMAP.md). First release `v0.1.0`
-is in progress.
+**Status:** Phases 1, 2, 3a, and 3b complete (Clean, Uninstall, Analyze
+with incremental SQLite cache). See [SPEC.md](SPEC.md) and
+[ROADMAP.md](ROADMAP.md). First release `v0.1.0` is in progress.
 
 ## Why
 
@@ -40,9 +40,9 @@ status in one native SwiftUI app, free and open source, that runs on a
 
 ## Status
 
-Phases 1, 2, and 3a complete. Phase 3b (incremental scan cache) and 3c
-(privileged helper) next. Watch [Releases](../../releases) for the
-first DMG.
+Phases 1, 2, 3a, and 3b complete. Phase 3c (privileged helper for
+Spotlight rebuild / DNS flush / icon services cache) next. Watch
+[Releases](../../releases) for the first DMG.
 
 ## Contributing
 
@@ -104,9 +104,11 @@ release. Each is tracked here so contributors don't re-discover them.
   volumes mounted with `noatime`; Burrow detects this and shows
   "Last-access tracking disabled on this volume." instead of misleading
   results.
-- **Analyze tab caches scans in memory only.** Re-launching the app
-  requires a fresh scan. Per-folder SQLite cache keyed by inode +
-  mtime arrives in Phase 3b.
+- **Analyze tab cache** lives at `~/Library/Application Support/fun.burrow/disk-cache.sqlite`
+  and is keyed by `(inode, mtime)`. If you ever need to flush it, the
+  Analyze tab's "⋯" menu has a "Reset Cache" action. The cache is
+  best-effort — if SQLite errors out, scans transparently fall back to
+  cold mode.
 
 ## Credits
 

@@ -159,6 +159,14 @@ final class AnalyzeViewModel: ObservableObject {
         NSWorkspace.shared.activateFileViewerSelecting([entry.url])
     }
 
+    /// Flush the persistent disk cache. Next scan starts cold.
+    /// In-memory state (visibleEntries, breadcrumb, insights) is NOT touched —
+    /// the user can keep navigating until they hit Rescan.
+    func resetCache() async {
+        await DiskCache.shared.flush()
+        logger.info("Disk cache flushed by user")
+    }
+
     /// Move a single entry to Trash through the SafeFileOps gate.
     func moveToTrash(_ entry: DiskEntry) async {
         do {

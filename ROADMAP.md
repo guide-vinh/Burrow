@@ -35,11 +35,25 @@ to Trash routes through `SafeFileOps`, fully audit-logged.
 - [x] `TreemapCanvas`, `InsightsPanel`, `Breadcrumb`, `AnalyzeView`
 - [x] Wired into the sidebar (Analyze tab)
 
-### Phase 3b — Cache + perf (open)
+### Phase 3b — Cache + perf (✅ shipped)
 
-Per-folder sizes cached in SQLite keyed by inode + mtime so re-scans are
-incremental. Acceptance: treemap renders 1M files / 500 GB home
-directory in under 30 seconds on first scan, under 3 seconds incremental.
+Per-folder sizes cached in SQLite keyed by `(inode, mtime)`. Cache
+lives at `~/Library/Application Support/fun.burrow/disk-cache.sqlite`,
+WAL journal mode, schema versioned via PRAGMA user_version. Best-effort:
+SQLite errors fall back to non-cached scan rather than block. The
+Analyze tab's overflow menu surfaces "Reset Cache" for the user.
+
+- [x] `DiskCache` actor wrapping system `libsqlite3` (no GRDB)
+- [x] `DiskScanner` consults the cache: `(inode, mtime)`-matched
+      directories short-circuit via `enumerator.skipDescendants()`
+- [x] Successful scans batch-upsert directories; failed/cancelled
+      scans leave cache untouched
+- [x] "Reset Cache" entry in the Analyze tab overflow menu
+
+Performance acceptance (1M files / 500 GB target, 30s first / 3s
+incremental) is a Task-9-style real-machine smoke test deferred to the
+user — autopilot synthetic tests verify correctness and that the second
+scan processes strictly fewer entries than the first.
 
 ### Phase 3c — Privileged helper (open)
 

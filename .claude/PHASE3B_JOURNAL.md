@@ -115,3 +115,76 @@ inode+mtime invalidation, cache best-effort).
 ### Decisions confirmed
 - Cache injection via `init(cache:)` parameter (no setter) — mirrors
   the AnalyzeViewModel closure-injection pattern from Phase 3a.
+
+## Wave 3 — UI flush hook + docs — DONE
+
+**Files changed:** 4 modified
+- `Burrow/ViewModels/AnalyzeViewModel.swift` (+8 lines: resetCache())
+- `Burrow/Views/Analyze/AnalyzeView.swift` (+13 lines: overflow Menu)
+- `ROADMAP.md` (Phase 3b → ✅ shipped)
+- `README.md` (status update + cache-location entry)
+
+**Tests:** 172 passing / 172 total — unchanged (no new tests; UI hook
+exercises existing cache flush method).
+**Build:** clean.
+
+### What got built
+- `AnalyzeViewModel.resetCache() async` — calls `DiskCache.shared.flush()`,
+  logs via os.Logger. Does NOT clear in-memory state (visibleEntries,
+  breadcrumb, insights stay) so the user can keep navigating until
+  they explicitly hit Rescan.
+- AnalyzeView header gains a SwiftUI `Menu` triggered by an
+  `ellipsis.circle` icon button placed right of the existing Rescan
+  button. Menu currently has one entry: "Reset Cache" with
+  `role: .destructive`. `.menuStyle(.borderlessButton)` to keep it
+  visually quiet.
+
+### Doc updates
+- ROADMAP §"Phase 3b" rewritten: open → ✅ shipped, with checkbox list
+  of the four delivered building blocks. Performance-target sentence
+  reframed as "Task-9-style deferred smoke test" (per DECISIONS §13).
+- README "Highlights": no change (the existing treemap analyzer bullet
+  covers 3a + 3b together — the cache is invisible perf, not a user-
+  facing feature).
+- README "Known limitations": "in-memory only" entry replaced with
+  "cache location + Reset Cache hint + best-effort fallback".
+- README status line: "Phases 1–3a complete" → "Phases 1, 2, 3a, 3b".
+
+### Issues encountered
+- None.
+
+### Decisions confirmed
+- "Reset Cache" UX placement: SwiftUI `Menu` next to Rescan button,
+  not a Settings/Preferences pane. Reset is rare but should be reachable
+  from the same context where the user noticed something was wrong.
+
+## Phase 3b — Autopilot session summary
+
+**Tasks delivered:** Wave 1 (DiskCache service), Wave 2 (DiskScanner
+integration), Wave 3 (UI flush hook + docs).
+
+**Commits (this session):**
+- `eff9d9b` docs: add phase 3b planning documents
+- `c11258a` add: disk cache actor backed by sqlite
+- `37ace86` improve: wire disk cache into scanner
+- (this commit) docs: mark phase 3b complete + reset-cache UI
+
+**Test count progression:** 159 (entry) → 169 → 172 → 172.
+
+**Coverage on new + touched non-view modules** (all ≥75% bar):
+- DiskCache.swift:    80.31% (204/254)
+- DiskScanner.swift:  88.98% (412/463)  ← improved from 84.32%
+
+**Stop conditions triggered:** none.
+**Compiler warnings:** zero.
+**SourceKit Swift-6-future-mode warnings:** one (DiskCache init calling
+actor-isolated openDatabase). Real Swift 5 compiler silent. Not blocking.
+
+**Compliance:** No GRDB or any new SPM dependency. No macOS 13+ APIs.
+SafeFileOps gate untouched. All Phase 1/2/3a tests still passing.
+
+**Performance validation:** synthetic 5K-file tests verify the cache
+*does* short-circuit (second scan reports fewer entriesScanned, same
+totalBytes, same final tree). The 30s/3s ROADMAP targets remain a
+real-~/ smoke test for the user (see Task 9 deferral note in
+PHASE3_JOURNAL.md).

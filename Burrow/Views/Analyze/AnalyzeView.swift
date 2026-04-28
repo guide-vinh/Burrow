@@ -122,6 +122,18 @@ struct AnalyzeView: View {
                 OutlineButton("Rescan") {
                     Task { await vm.scan() }
                 }
+                Menu {
+                    Button("Reset Cache", role: .destructive) {
+                        Task { await vm.resetCache() }
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                        .font(.system(size: 14))
+                        .foregroundStyle(Color.fgSecondary)
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                .help("More actions")
             }
             // Row 2: stats
             Text(statsLine)
