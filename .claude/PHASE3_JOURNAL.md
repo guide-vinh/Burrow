@@ -425,3 +425,100 @@ and are visually verified.
 - Used closure-injected `AnalyzeViewModel` to keep the test isolated
   from `DiskScanner.shared` singleton state (would otherwise leak
   cached entries between test runs).
+
+## Task 9 — Smoke test — DEFERRED to user
+
+Per PHASE3_PLAN spec: requires real ~500 GB home directory and live
+TCC-granted Burrow.app. Cannot run from the autopilot environment.
+User to run on return:
+1. Pull branch
+2. `make release` (or `xcodebuild -scheme Burrow -configuration Release build`)
+3. Open Burrow.app, click Analyze, scan ~/
+4. Verify scan completes < 5 min, treemap renders, zoom-in works,
+   Move to Trash routes through SafeFileOps (file lands in ~/.Trash)
+
+Rough peak-RAM expectation per DECISIONS §1: 40–400 MB for typical
+homes. If 1M+ entries push past 1 GB, defer to Phase 3b (GRDB cache).
+
+## Task 10 — Docs update — DONE
+
+**Files changed:** 2 modified (README.md, ROADMAP.md). SPEC.md and
+UI_ARCHITECTURE.md skipped per PHASE3_PLAN guidance ("If docs already
+perfectly describe the implementation: skip the patch").
+
+### What got changed
+
+**ROADMAP.md** — Phase 3 section split into sub-phases:
+- Phase 3a (Disk Analyzer) marked ✅ shipped, with checkbox list of
+  the 5 building-block deliverables (DiskScanner, TreemapLayout,
+  AnalyzeViewModel, the four views, sidebar wiring).
+- Phase 3b (cache + perf) carved out as the incremental-scan SQLite
+  follow-up.
+- Phase 3c (privileged helper) carved out as the SMJobBless track.
+
+**README.md**:
+- Status header updated: "specification stage" → "Phases 1–3a complete".
+- "Highlights" section gains a treemap analyzer bullet.
+- "Status" section reflects 1/2/3a complete, 3b/3c next.
+- "Known limitations" gains two entries: noatime-volume oldest-empty
+  display (per DECISIONS §6 graceful degradation) and the in-memory-
+  only cache deferred to 3b.
+
+**SPEC.md** — not patched. The Phase 3 architecture in SPEC.md §3 still
+matches the implementation: in-memory cache only (matches DECISIONS §1),
+NavigationView (not split, matches actual RootView), trash-first via
+SafeFileOps (matches AnalyzeViewModel.moveToTrash). Where PHASE3_PLAN
+chose to deviate from earlier docs (e.g. `colorSeed: Color` exposed on
+Model, against UI_ARCH §7), DECISIONS §13 already authorized this and
+the journal records both sides — no SPEC patch needed.
+
+**UI_ARCHITECTURE.md** — not patched. No new reusable component was
+extracted from Phase 3a. `Breadcrumb` lives next to its consumer in
+Burrow/Views/Analyze/, not in Shared/Components/, because nothing else
+needs it yet. If a future tab grows a breadcrumb, promote then.
+
+### Issues encountered
+- None. Doc patches were straightforward.
+
+### Decisions made
+- Did NOT introduce a "Phase 3a screenshot" placeholder per Task 10's
+  optional language. Screenshots ship with the v0.1.0 release prep,
+  not with the autopilot session. Avoided fabricating a screenshot
+  link that would 404 until release.
+
+## Phase 3a — Autopilot session summary
+
+**Tasks delivered:** 1, 2, 3, 4, 5, 6, 6.5, 7, 8, 10 (Task 9 = real-machine smoke
+test, deferred to user as planned).
+
+**Commits (this session):**
+- `8dc40e4` add: disk analyzer models
+- `9fe2705` add: squarified treemap algorithm
+- `5eb5fd9` add: disk scanner service
+- `8180a8f` add: analyze view model
+- `ea29e6b` add: treemap canvas view
+- `0324cc8` add: analyzer insights panel
+- `98a3475` add: analyzer breadcrumb view
+- `d21e9c5` add: analyze tab and wire it into root view
+- `f0a51f8` test: end-to-end analyze pipeline integration
+- (this commit) docs: mark Phase 3a complete in README + ROADMAP
+
+**Test count progression:** 102 (entry) → 110 → 123 → 136 → 150 → 157 → 159.
+
+**Coverage on new non-view modules** (all ≥75% bar):
+- DiskEntry.swift:        94.74%
+- TreemapLayout.swift:    83.53%
+- DiskScanner.swift:      84.32%
+- AnalyzeViewModel.swift: 79.85%
+
+**Stop conditions triggered:** none.
+
+**One-line build retry:** Task 5 TreemapCanvas needed `.foregroundStyle`
+→ `.foregroundColor` on Text inside a Canvas (macOS 12 type-erasure
+quirk). Fixed inline; no autopilot stop.
+
+**One audit catch:** Task 7 AnalyzeView used `Color(hex: 0xFEE2E2)`
+literal (UI_ARCH violation). Fixed inline to `Color.Risk.highBG`.
+
+**Compliance:** SafeFileOps gate intact, no GRDB introduced, no macOS 13+
+APIs used, no scope violations, all phase 1-2 tests still passing.

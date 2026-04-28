@@ -21,17 +21,32 @@ on the same set of apps, project purge respects a `> 7 days` age filter.
 
 Two parallel tracks.
 
-The visualizer: squarified treemap of `~/`, click-to-zoom, breadcrumb
-path, per-folder size cached in a SQLite db keyed by inode + mtime so
-re-scans are incremental.
+### Phase 3a — Disk Analyzer (✅ shipped)
 
-The privileged helper: `BurrowHelper` XPC target installed via
-`SMJobBless`. Implements rebuild Spotlight, flush DNS, clear icon
-services cache. The main app's "Optimize" tab calls into it.
+Squarified treemap of `~/`, click-to-zoom, breadcrumb path, hash-derived
+deterministic colors, in-memory cache for fast zoom across the same
+scan. Insights side panel surfaces top-5 largest and oldest-never-opened
+entries (atime-aware, degrades gracefully on `noatime` volumes). Move
+to Trash routes through `SafeFileOps`, fully audit-logged.
 
-Acceptance: treemap renders 1M files / 500 GB home directory in under 30
-seconds on first scan, under 3 seconds incremental. Helper survives a
-reboot and can be uninstalled cleanly.
+- [x] `DiskScanner` actor with `AsyncThrowingStream` progress
+- [x] Squarified treemap algorithm (Bruls et al. 1999)
+- [x] `AnalyzeViewModel` driving treemap + insights
+- [x] `TreemapCanvas`, `InsightsPanel`, `Breadcrumb`, `AnalyzeView`
+- [x] Wired into the sidebar (Analyze tab)
+
+### Phase 3b — Cache + perf (open)
+
+Per-folder sizes cached in SQLite keyed by inode + mtime so re-scans are
+incremental. Acceptance: treemap renders 1M files / 500 GB home
+directory in under 30 seconds on first scan, under 3 seconds incremental.
+
+### Phase 3c — Privileged helper (open)
+
+`BurrowHelper` XPC target installed via `SMJobBless`. Implements rebuild
+Spotlight, flush DNS, clear icon services cache. The main app's
+"Optimize" tab calls into it. Acceptance: helper survives a reboot and
+can be uninstalled cleanly.
 
 ## Phase 4 — Live Status (2 weekends)
 
