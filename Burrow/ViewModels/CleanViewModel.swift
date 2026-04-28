@@ -1,3 +1,4 @@
+import AppKit               // NSWorkspace.activateFileViewerSelecting
 import Foundation
 import SwiftUI // ObservableObject + @Published only — no Color/Font/Image
 import os
@@ -237,6 +238,28 @@ final class CleanViewModel: ObservableObject {
         selectedCategoryIds
             .compactMap { scanResults[$0]?.items.count }
             .reduce(0, +)
+    }
+
+    /// Reveal the first existing path of `category` in Finder.
+    /// Walks rules in declaration order, resolves each via PathResolver,
+    /// and opens whichever URL exists first. No-op if nothing resolves
+    /// (which shouldn't happen post-`filterInstalled`, but harmless).
+    func revealInFinder(_ category: CleanCategory) {
+        for rule in category.rules {
+            let path: String
+            switch rule {
+            case let .directoryContents(p, _, _, _),
+                 let .glob(p, _, _, _):
+                path = p
+            case .command:
+                continue
+            }
+            if let url = PathResolver.resolve(path).first {
+                NSWorkspace.shared.activateFileViewerSelecting([url])
+                return
+            }
+        }
+        logger.warning("revealInFinder: no resolvable path for \(category.id, privacy: .public)")
     }
 
     /// True iff every loaded category is selected. Drives the

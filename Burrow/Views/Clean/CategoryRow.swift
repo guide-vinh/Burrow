@@ -6,6 +6,7 @@ struct CategoryRow: View {
     let category: CleanCategory
     let scanResult: ScanResult?
     @Binding var isSelected: Bool
+    let onReveal: () -> Void
 
     var body: some View {
         HStack(spacing: Spacing.md) {
@@ -19,6 +20,14 @@ struct CategoryRow: View {
             Text(category.title)
                 .font(.bodyM)
                 .foregroundStyle(Color.fgPrimary)
+
+            Button(action: onReveal) {
+                Image(systemName: "info.circle")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Color.fgMuted)
+            }
+            .buttonStyle(.plain)
+            .help("Show in Finder")
 
             Spacer(minLength: Spacing.sm)
 

@@ -17,7 +17,8 @@ struct CategoryGroupSection: View {
                     CategoryRow(
                         category: category,
                         scanResult: vm.scanResults[category.id],
-                        isSelected: binding(for: category.id)
+                        isSelected: binding(for: category.id),
+                        onReveal: { vm.revealInFinder(category) }
                     )
                 }
             }
