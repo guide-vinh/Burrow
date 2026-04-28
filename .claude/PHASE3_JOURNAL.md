@@ -212,3 +212,108 @@ BurrowTests/AnalyzeViewModelTests.swift).
 
 ### Issues encountered
 - None requiring intervention. Sonnet completed in one pass.
+
+## Wave 4 — Tasks 5 + 6 + 6.5 (parallel) — DONE
+
+Three independent leaf views, dispatched as concurrent Sonnet subagents.
+No shared symbols; merged in one build pass after all returned.
+
+**Files changed:** 4 added (Burrow/Views/Analyze/TreemapCanvas.swift,
+Burrow/Views/Analyze/InsightsPanel.swift, Burrow/Views/Analyze/Breadcrumb.swift,
+BurrowTests/BreadcrumbTests.swift). Burrow/Views/Analyze/ directory created.
+**Lines:** TreemapCanvas 229 + InsightsPanel 220 + Breadcrumb 111 + tests 87 = 647 total.
+**Tests:** 157 passing / 157 total (was 150; +7 new — all on `Breadcrumb.ellipsize`).
+
+### Coverage
+- Breadcrumb.swift: 4.18% file-level (the helper itself is fully covered;
+  the view body + previews drag the percentage down).
+- TreemapCanvas.swift: 0%.
+- InsightsPanel.swift: 0%.
+
+Per established Burrow convention (AppListRow 0%, EmptyState 0%,
+UninstallDetail 0%, LeftoverRow 0%, OutlineButton 0%, PreviewBanner 0%),
+the ≥75% bar is for algorithm/model/service/VM only — view files ship
+with `#Preview` and are visually verified, not unit-tested. No deviation.
+
+### Task 5 — TreemapCanvas (229 lines)
+
+**What got built**
+- `struct TreemapCanvas: View` with `entries`, `onTap`, `onContextMenu`
+  closures + nested `enum ContextMenuAction { case revealInFinder, moveToTrash }`.
+- Layered architecture: SwiftUI `Canvas` for fill/stroke/labels +
+  parallel `ForEach` overlay of transparent rect-shaped buttons for
+  hit-testing (Canvas itself can't hit-test per-rect on macOS 12).
+- Layout memoized in `@State` keyed off `entries.map { $0.id }`,
+  recomputed in `.onChange(of: entries)` and `.onChange(of: geometry.size)`.
+- Label visibility threshold: width > 60pt AND height > 24pt for name;
+  size label additionally requires height > 24 + 15 + 14 + padding*2 ≈ 61pt.
+- Text contrast: `entry.colorComponents.brightness < 0.7 ? .white : Color.fgPrimary`.
+- Hover: `.help("\(entry.url.path)  ·  \(entry.humanSize)")` (simpler
+  than popover, no positioning bugs).
+
+**Issues encountered**
+- Build pass 1 failed at line 77: `context.draw(nameText, in: nameRect)` —
+  `Text.foregroundStyle(_:)` returns `some View` (not `Text`) on macOS 12,
+  so the `Canvas.draw(_ text: Text, in rect:)` overload couldn't dispatch.
+  Fix: `.foregroundStyle(_:)` → `.foregroundColor(_:)` on both `nameText`
+  and `sizeText` (foregroundColor is `Text`-returning). One-line fix,
+  build passed on retry. Documented for future Canvas+Text patterns.
+
+**Deviations**
+- Trash context-menu button uses `.foregroundStyle(Color.destructive)` on
+  the inner Label in addition to `Button(role: .destructive)` because
+  role-based tinting in `.contextMenu` is unreliable on macOS 12.
+
+### Task 6 — InsightsPanel (220 lines)
+
+**What got built**
+- `struct InsightsPanel: View` with `topLargest`, `oldestNeverOpened`,
+  `onRevealInFinder` per spec.
+- Two private subviews (`LargestEntryRow`, `OldestEntryRow`) sharing a
+  `RankCircle` helper (Circle 24×24 surfaceTertiary + caption rank).
+- Whole row wrapped in `Button { onRevealInFinder(entry) } .buttonStyle(.plain)
+  .contentShape(Rectangle())`.
+- Two private pure helpers: `relativeAge(_:now:)` (integer arithmetic,
+  no DateComponentsFormatter) and `abbreviatedPath(_:)` (substitutes `~/`
+  for the home prefix).
+- Empty `oldestNeverOpened` shows "Last-access tracking disabled on this
+  volume." in `.bodyS` `Color.fgMuted` (DECISIONS §6 explanatory copy).
+- Two `#Preview` flavors via `Group`: populated + atime-disabled.
+
+**Issues encountered**
+- None. Sonnet one-shot.
+
+### Task 6.5 — Breadcrumb (111 lines + 87 lines tests)
+
+**What got built**
+- `struct Breadcrumb: View` with `path`, `onNavigate` per spec.
+- `static func ellipsize(path:maxVisible:) -> [URL?]` exposed
+  non-private inside `Breadcrumb` for `@testable` access.
+- View threshold: ≤4 segments → render all; ≥5 → ellipsize to
+  `[first, …, secondToLast, last]` (4 visual slots).
+- Volume-root URL ("/") displays as "Macintosh HD".
+- Empty path → `EmptyView()`.
+- Wrapped in `ScrollView(.horizontal, showsIndicators: false)` so
+  unellipsized over-long paths still don't crop awkwardly.
+
+**Tests (7 added, all passing)**
+- testEllipsizeEmptyPath, testEllipsizeShortPathNotEllipsized,
+  testEllipsizeAtBoundaryNotEllipsized, testEllipsizeLongPathEllipsized,
+  testEllipsizeKeepsLastTwoSegments, testEllipsizeKeepsFirstSegment,
+  testEllipsizeMaxVisibleEqualsPathCount.
+
+**Issues encountered**
+- None. Sonnet one-shot.
+
+### Decisions made
+- View files don't get unit tests beyond pure helpers (Burrow convention).
+  `ellipsize` is a pure function so it does — the rest of the views ship
+  with `#Preview` for visual verification.
+
+### Open issues for user to review on return
+- TreemapCanvas hit-test layer uses `ForEach + Color.clear + .frame +
+  .position` which works but is two layout passes per redraw. If profile
+  shows hit-test layer dragging FPS at 100+ rects, consider a single
+  `.gesture(SpatialTapGesture())` against the cached layout array.
+- Trash button red color in `.contextMenu` may not render on all macOS
+  12.x point releases; verify visually on real machine.
