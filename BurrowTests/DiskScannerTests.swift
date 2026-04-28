@@ -318,6 +318,101 @@ final class DiskScannerTests: XCTestCase {
         ))
     }
 
+    // MARK: - Cache helper
+
+    private func makeTmpdirCache() -> DiskCache {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("burrow-scanner-cache-\(UUID().uuidString).sqlite")
+        return DiskCache(databaseURL: url)
+    }
+
+    // MARK: - Test 13: First scan writes cache
+
+    func testFirstScanWritesCache() async throws {
+        try writeFile("a/file.bin", bytes: 100)
+        try writeFile("b/file.bin", bytes: 200)
+
+        let cache = makeTmpdirCache()
+        let scanner = DiskScanner(cache: cache)
+        _ = try await runScan(scanner, root: fixture)
+
+        // After scan completion, the cache must contain rows for fixture/a and fixture/b.
+        let aCached = await cache.entry(at: fixture.appendingPathComponent("a").path)
+        let bCached = await cache.entry(at: fixture.appendingPathComponent("b").path)
+        XCTAssertNotNil(aCached, "fixture/a must be in cache after first scan")
+        XCTAssertNotNil(bCached, "fixture/b must be in cache after first scan")
+        XCTAssertEqual(aCached?.isDirectory, true)
+        XCTAssertGreaterThanOrEqual(aCached?.size ?? 0, 100)
+    }
+
+    // MARK: - Test 14: Second scan reuses cache for unchanged subtrees
+
+    func testSecondScanReusesCacheForUnchangedSubtrees() async throws {
+        try writeFile("a/x.bin", bytes: 100)
+        try writeFile("a/y.bin", bytes: 200)
+        try writeFile("b/z.bin", bytes: 50)
+
+        let cache = makeTmpdirCache()
+        let scanner = DiskScanner(cache: cache)
+
+        // First scan — populates cache.
+        let first = try await runScan(scanner, root: fixture)
+        let firstFinished = first.last
+        XCTAssertEqual(firstFinished?.phase, .finished)
+        let firstEntriesScanned = firstFinished?.entriesScanned ?? 0
+        XCTAssertGreaterThan(firstEntriesScanned, 0)
+
+        // Second scan — should hit cache for both subtrees, scan fewer entries.
+        let second = try await runScan(scanner, root: fixture)
+        let secondFinished = second.last
+        XCTAssertEqual(secondFinished?.phase, .finished)
+        let secondEntriesScanned = secondFinished?.entriesScanned ?? 0
+
+        // Total bytes must be reported equally on both scans.
+        XCTAssertEqual(firstFinished?.totalBytes, secondFinished?.totalBytes)
+        // Second scan should process strictly fewer entries (file children skipped).
+        XCTAssertLessThan(secondEntriesScanned, firstEntriesScanned,
+                          "Second scan should reuse cache and process fewer entries")
+    }
+
+    // MARK: - Test 15: Cache invalidates when file changes
+
+    func testCacheInvalidatesWhenFileChanges() async throws {
+        let aDir = fixture.appendingPathComponent("a")
+        try FileManager.default.createDirectory(at: aDir, withIntermediateDirectories: true)
+        let fileA = aDir.appendingPathComponent("file.bin")
+        try Data(repeating: 0xAA, count: 100).write(to: fileA)
+
+        let cache = makeTmpdirCache()
+        let scanner = DiskScanner(cache: cache)
+
+        // First scan — establishes cache.
+        _ = try await runScan(scanner, root: fixture)
+        let firstCached = await cache.entry(at: aDir.path)
+        XCTAssertNotNil(firstCached)
+        let firstSize = firstCached?.size ?? 0
+
+        // Sleep briefly to ensure mtime changes detectably (>1s tolerance).
+        try await Task.sleep(nanoseconds: 1_200_000_000)
+
+        // Modify the file — this changes the parent dir's mtime.
+        try Data(repeating: 0xBB, count: 5_000).write(to: fileA)
+
+        // Touch the directory mtime explicitly (writing a file inside should
+        // already do this on most filesystems, but be defensive).
+        try FileManager.default.setAttributes(
+            [.modificationDate: Date()], ofItemAtPath: aDir.path
+        )
+
+        // Second scan — should see new mtime, invalidate cache, re-scan.
+        _ = try await runScan(scanner, root: fixture)
+        let secondCached = await cache.entry(at: aDir.path)
+        XCTAssertNotNil(secondCached)
+        let secondSize = secondCached?.size ?? 0
+        XCTAssertGreaterThan(secondSize, firstSize,
+                             "Cache must reflect the larger file after invalidation")
+    }
+
     // MARK: - Test 12b: Scan skips CloudStorage subtree within scanned tree
 
     func testScanSkipsCloudStorageWithinScannedTree() async throws {

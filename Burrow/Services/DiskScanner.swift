@@ -15,9 +15,15 @@ actor DiskScanner {
 
     // MARK: - Init
 
-    init() { }
+    init(cache: DiskCache = DiskCache.shared) {
+        self.cache = cache
+    }
 
     // MARK: - Private state
+
+    /// Disk cache for directory subtrees. Declared `var` for test injection;
+    /// production must not mutate this after init.
+    private var cache: DiskCache
 
     /// Keyed by `url.standardizedFileURL` for consistent URL equality.
     private var cachedEntries: [URL: DiskEntry] = [:]
@@ -38,6 +44,18 @@ actor DiskScanner {
         .isSymbolicLinkKey,
         .isPackageKey,
     ]
+
+    /// Returns the inode number for the given path via FileManager attributes.
+    /// Returns 0 on error (treated as a cache miss — no false hits).
+    private static func inodeOf(_ path: String) -> UInt64 {
+        guard let attrs = try? FileManager.default.attributesOfItem(atPath: path),
+              let num = attrs[.systemFileNumber] else { return 0 }
+        // The value is bridged as NSNumber; cast through Int to UInt64.
+        if let n = num as? UInt64 { return n }
+        if let n = num as? Int { return UInt64(bitPattern: Int64(n)) }
+        if let n = (num as AnyObject).int64Value.map({ UInt64(bitPattern: $0) }) { return n }
+        return 0
+    }
 
     // MARK: - Public API
 
@@ -121,6 +139,8 @@ actor DiskScanner {
         var entriesScanned = 0
         var totalBytes: Int64 = 0
         var lastYield = Date()
+        var cacheHits = 0
+        var cacheMisses = 0
         /// Keyed by standardized URL.
         var localEntries: [URL: DiskEntry] = [:]
 
@@ -151,10 +171,9 @@ actor DiskScanner {
         )
         localEntries[root] = rootEntry
 
-        do {
-            let fm = FileManager.default
-            let homeDir = fm.homeDirectoryForCurrentUser.standardizedFileURL.path
-            var enumeratorOptions: FileManager.DirectoryEnumerationOptions = [.skipsPackageDescendants]
+        let fm = FileManager.default
+        let homeDir = fm.homeDirectoryForCurrentUser.standardizedFileURL.path
+        var enumeratorOptions: FileManager.DirectoryEnumerationOptions = [.skipsPackageDescendants]
             if !includeHidden {
                 enumeratorOptions.insert(.skipsHiddenFiles)
             }
@@ -220,6 +239,76 @@ actor DiskScanner {
                 let isPackage = values.isPackage == true
                 let isDirectory = (values.isDirectory == true) && !isPackage
 
+                // Capture inode via stat(2) and mtime from resource values.
+                let liveInode = Self.inodeOf(url.path)
+                let liveMtime = values.contentModificationDate ?? Date()
+
+                // Cache lookup for directories only (not packages, not files)
+                if isDirectory, url != root {
+                    if let cached = await cache.entry(at: url.path),
+                       cached.inode == liveInode,
+                       abs(cached.mtime.timeIntervalSince(liveMtime)) < 1.0 {
+
+                        // Cache hit — synthesize directory entry from cached row.
+                        let cachedEntry = DiskEntry(
+                            id: UUID(),
+                            url: url,
+                            parentURL: url.deletingLastPathComponent(),
+                            name: url.lastPathComponent,
+                            size: cached.size,
+                            isDirectory: true,
+                            modifiedAt: liveMtime,
+                            lastAccessedAt: values.contentAccessDate,
+                            childCount: cached.childCount
+                        )
+                        localEntries[url] = cachedEntry
+
+                        // Increment childCount on immediate parent (mirror of the
+                        // normal-path logic below).
+                        if let pURL = cachedEntry.parentURL, var parent = localEntries[pURL] {
+                            parent = DiskEntry(
+                                id: parent.id, url: parent.url, parentURL: parent.parentURL,
+                                name: parent.name, size: parent.size,
+                                isDirectory: parent.isDirectory, modifiedAt: parent.modifiedAt,
+                                lastAccessedAt: parent.lastAccessedAt,
+                                childCount: parent.childCount + 1
+                            )
+                            localEntries[pURL] = parent
+                        }
+
+                        // Bubble cached.size up the parent chain (mirror of the
+                        // normal-path bubble-up logic below).
+                        if cached.size > 0 {
+                            var current: URL? = cachedEntry.parentURL
+                            while let cur = current {
+                                if var parent = localEntries[cur] {
+                                    parent = DiskEntry(
+                                        id: parent.id, url: parent.url, parentURL: parent.parentURL,
+                                        name: parent.name, size: parent.size + cached.size,
+                                        isDirectory: parent.isDirectory, modifiedAt: parent.modifiedAt,
+                                        lastAccessedAt: parent.lastAccessedAt,
+                                        childCount: parent.childCount
+                                    )
+                                    localEntries[cur] = parent
+                                }
+                                if cur == root { break }
+                                let parent = cur.deletingLastPathComponent()
+                                if parent.path == "/" || parent.path.isEmpty { break }
+                                current = parent
+                            }
+                        }
+
+                        entriesScanned += 1
+                        totalBytes += cached.size
+                        cacheHits += 1
+
+                        enumerator.skipDescendants()
+                        continue
+                    }
+                    // Cache miss for this directory
+                    cacheMisses += 1
+                }
+
                 // For packages, record as opaque and skip descendants
                 if isPackage {
                     enumerator.skipDescendants()
@@ -240,7 +329,7 @@ actor DiskScanner {
                     name: url.lastPathComponent,
                     size: ownSize,
                     isDirectory: isDirectory,
-                    modifiedAt: values.contentModificationDate ?? Date(),
+                    modifiedAt: liveMtime,
                     lastAccessedAt: values.contentAccessDate,
                     childCount: 0
                 )
@@ -318,10 +407,38 @@ actor DiskScanner {
             }
 
             // 3. Finished phase — update cache only on success
+
+            // Persist to disk cache (best-effort; cache failures don't fail the scan).
+            let toCache: [CachedEntry] = localEntries.values.compactMap { entry in
+                // Only cache directories; files are reconstructible from one fs syscall.
+                guard entry.isDirectory else { return nil }
+                // Re-read fresh inode via stat(2) and mtime from resource values.
+                let inode = Self.inodeOf(entry.url.path)
+                let mtime: Date
+                if let resourceValues = try? entry.url.resourceValues(
+                    forKeys: [.contentModificationDateKey]
+                ), let m = resourceValues.contentModificationDate {
+                    mtime = m
+                } else {
+                    mtime = entry.modifiedAt
+                }
+                return CachedEntry(
+                    path: entry.url.path,
+                    parentPath: entry.parentURL?.path,
+                    inode: inode,
+                    mtime: mtime,
+                    size: entry.size,
+                    childCount: entry.childCount,
+                    isDirectory: true,
+                    lastScanned: Date()
+                )
+            }
+            await cache.upsertBatch(toCache)
+
             self.cachedEntries = localEntries
             self.lastRoot = root
 
-            logger.info("Scan finished: \(entriesScanned, privacy: .public) entries, \(totalBytes, privacy: .public) bytes")
+            logger.info("Scan finished: \(entriesScanned, privacy: .public) entries, \(totalBytes, privacy: .public) bytes (cache: \(cacheHits, privacy: .public) hits / \(cacheMisses, privacy: .public) misses)")
 
             continuation.yield(ScanProgress(
                 phase: .finished,
@@ -331,19 +448,6 @@ actor DiskScanner {
                 elapsed: Date().timeIntervalSince(scanStart)
             ))
             continuation.finish()
-
-        } catch {
-            // Top-level catch: yield error phase, finish with error
-            logger.error("Scan failed: \(error.localizedDescription, privacy: .public)")
-            continuation.yield(ScanProgress(
-                phase: .cancelled,
-                entriesScanned: entriesScanned,
-                totalBytes: totalBytes,
-                currentPath: nil,
-                elapsed: Date().timeIntervalSince(scanStart)
-            ))
-            continuation.finish(throwing: error)
-        }
     }
 
     // MARK: - Path exclusion

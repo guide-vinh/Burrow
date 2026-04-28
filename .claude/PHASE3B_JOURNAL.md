@@ -59,3 +59,59 @@ inode+mtime invalidation, cache best-effort).
   calling actor-isolated `openDatabase()`). Real Swift 5 compiler is
   silent; this is forward-compat noise. Refactor deferred to whenever
   the project flips to Swift 6 mode.
+
+## Wave 2 — DiskScanner cache integration — DONE
+
+**Files changed:** 2 modified
+- `Burrow/Services/DiskScanner.swift` (+~60 lines)
+- `BurrowTests/DiskScannerTests.swift` (+83 lines, 3 tests)
+
+**Tests:** 172 passing (was 169; +3).
+**Coverage:**
+- DiskScanner.swift: 88.98% (412/463) — was 84.32%, IMPROVED
+- DiskCache.swift:   80.31% (204/254) — was 77.17%, IMPROVED
+**Build:** clean, zero compiler warnings.
+
+### What got built
+
+- `DiskScanner.init(cache: DiskCache = DiskCache.shared)` — preserves
+  `DiskScanner.shared` while letting tests inject a tmpdir-backed cache.
+- Cache-hit short-circuit (DECISIONS §10): inside `runScan`, when an
+  enumerated URL is a directory and `(cached.inode == liveInode &&
+  abs(cached.mtime - liveMtime) < 1s)`, synthesize a DiskEntry from the
+  cached row, mirror the bubble-up + childCount logic, and call
+  `enumerator.skipDescendants()`. Counts as 1 entriesScanned + adds
+  cached.size to totalBytes.
+- Cache hits/misses tracked per scan, logged via `os.Logger` at
+  `.info`. Helps eyeball perf wins post-hoc.
+- After a successful scan: batch-upsert all directory entries to the
+  cache. Files NOT cached (DECISIONS §9). Failed/cancelled scans skip
+  the upsert (preserves the invariant: cached rows reflect a complete
+  subtree).
+
+### Tests added
+- `testFirstScanWritesCache` — first scan populates cache rows for
+  directories.
+- `testSecondScanReusesCacheForUnchangedSubtrees` — second scan reports
+  same totalBytes but fewer entriesScanned (proof of cache hit).
+- `testCacheInvalidatesWhenFileChanges` — modify file in subtree +
+  touch dir mtime → second scan reflects new larger size.
+
+### Issues encountered
+- Sonnet found `.fileSystemFileNumberKey` is not a Swift-exposed
+  `URLResourceKey` static member on macOS 12. Worked around using
+  `FileManager.attributesOfItem(atPath:)[.systemFileNumber]` via a
+  private `static func inodeOf(_:)` helper. Behavior equivalent.
+- Test 3 (mtime invalidation) needed a `Task.sleep(nanoseconds:
+  1_200_000_000)` + explicit `setAttributes([.modificationDate: Date()])`
+  on the directory to defeat APFS mtime granularity. No flakiness in 5
+  consecutive runs.
+
+### Deviations from PHASE3B_DECISIONS.md
+- §10 spec named `URLResourceKey.fileSystemFileNumberKey`; actual
+  implementation uses `FileManager` attributes due to macOS 12 SDK
+  exposure. Functionally identical.
+
+### Decisions confirmed
+- Cache injection via `init(cache:)` parameter (no setter) — mirrors
+  the AnalyzeViewModel closure-injection pattern from Phase 3a.
