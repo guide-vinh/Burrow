@@ -373,3 +373,55 @@ arrive in Task 8).
   rendered on a real 13" MacBook (effective width ≈ 1280 minus
   sidebar ≈ 220 = 1060pt — comfortably above 900, so default state
   is side-by-side on the smallest target).
+
+## Task 8 — Integration sweep — DONE
+
+**Files changed:** 1 added (BurrowTests/AnalyzePipelineTests.swift, ~155 lines).
+**Tests:** 159 passing / 159 total (was 157; +2 new integration tests).
+
+### Coverage on Phase 3a non-view modules
+
+All ≥75% bar:
+- DiskEntry.swift:        94.74%  (18/19)
+- TreemapLayout.swift:    83.53%  (142/170)
+- DiskScanner.swift:      84.32%  (285/338)
+- AnalyzeViewModel.swift: 79.85%  (214/268)
+
+View files (Breadcrumb 4.18%, TreemapCanvas 0%, InsightsPanel 0%,
+AnalyzeView 0%) — exempt per established Burrow convention (UninstallView
+0%, AppListRow 0%, EmptyState 0%, etc.). Views ship with `#Preview`
+and are visually verified.
+
+### What got built
+
+`AnalyzePipelineTests` exercises the full pipeline:
+
+1. **testFullPipelineProducesNonOverlappingTreemap**
+   - Builds tmpdir fixture: 5 subdirs (`dirA`–`dirE`) × 4 files each =
+     20 files total. Sizes scale by directory: dirE has 256× the
+     multiplier of dirA so order is deterministic.
+   - Runs `DiskScanner.scan` end-to-end, asserts `entriesScanned == 25`
+     (5 dirs + 20 files).
+   - Calls `childrenOf(fixture)` to resolve immediate children.
+   - Lays out via `TreemapLayout.layout` in a 1000×600 bounds.
+   - Asserts: 5 rects produced, all within bounds (with 0.001 epsilon
+     for float rounding), no pairwise overlap (intersection area < 0.01).
+
+2. **testTopLargestMatchesFixtureOrdering**
+   - Pumps same fixture through `AnalyzeViewModel` with closure injection
+     (real `DiskScanner`, fixture-rooted `homeDirectory`).
+   - Asserts `topLargest.first?.name == "dirE"`, `topLargest[1].name == "dirD"`.
+   - Asserts `visibleEntries` is sorted descending by size (top-100
+     truncation invariant).
+
+### Issues encountered
+- None. Tests passed on first run.
+
+### Decisions made
+- Did NOT add tests against `AnalyzeView`/`TreemapCanvas`/`InsightsPanel`
+  themselves — view-level UI tests aren't established in this codebase
+  (UninstallView has zero), and the spec called for *integration* not
+  view-snapshot tests. The 75% bar on non-view modules is met.
+- Used closure-injected `AnalyzeViewModel` to keep the test isolated
+  from `DiskScanner.shared` singleton state (would otherwise leak
+  cached entries between test runs).
