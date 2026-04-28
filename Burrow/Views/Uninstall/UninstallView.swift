@@ -6,7 +6,7 @@ import UniformTypeIdentifiers
 /// right). Accepts dropped .app bundles from Finder; resolves the URL
 /// against the discovered apps list and selects the match.
 struct UninstallView: View {
-    @StateObject private var vm = UninstallViewModel()
+    @ObservedObject var vm: UninstallViewModel
     @State private var isDropping = false
 
     var body: some View {
@@ -19,7 +19,11 @@ struct UninstallView: View {
         .background(Color.surfacePrimary)
         .overlay(dropTargetOverlay)
         .onDrop(of: [.fileURL], isTargeted: $isDropping, perform: handleDrop)
-        .task { await vm.loadApps() }
+        .task {
+            // Guard against re-fire on tab-switch re-mount; internal
+            // refresh-after-uninstall calls vm.loadApps() directly.
+            if vm.apps.isEmpty { await vm.loadApps() }
+        }
     }
 
     // MARK: - Sidebar

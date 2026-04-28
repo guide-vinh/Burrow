@@ -5,7 +5,7 @@ import SwiftUI
 /// layout backed by AnalyzeViewModel.
 struct AnalyzeView: View {
 
-    @StateObject private var vm = AnalyzeViewModel()
+    @ObservedObject var vm: AnalyzeViewModel
 
     /// Tracks the body area width for responsive layout switching.
     @State private var containerWidth: CGFloat = 0

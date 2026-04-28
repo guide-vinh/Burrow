@@ -10,6 +10,13 @@ struct RootView: View {
     @State private var selection: SidebarDestination = .clean
     @State private var showFDASheet = false
 
+    // Tab view-models are owned here so state survives tab switches.
+    // Without this, switching `selection` re-instantiates the destination
+    // view's @StateObject and wipes the user's scan / selection.
+    @StateObject private var cleanVM = CleanViewModel()
+    @StateObject private var uninstallVM = UninstallViewModel()
+    @StateObject private var analyzeVM = AnalyzeViewModel()
+
     var body: some View {
         NavigationView {
             sidebar
@@ -86,9 +93,9 @@ struct RootView: View {
     @ViewBuilder
     private var detail: some View {
         switch selection {
-        case .clean:     CleanView()
-        case .uninstall: UninstallView()
-        case .analyze:   AnalyzeView()
+        case .clean:     CleanView(vm: cleanVM)
+        case .uninstall: UninstallView(vm: uninstallVM)
+        case .analyze:   AnalyzeView(vm: analyzeVM)
         case .status:    placeholder(for: .status)
         }
     }

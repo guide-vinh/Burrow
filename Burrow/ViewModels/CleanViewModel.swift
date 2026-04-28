@@ -52,7 +52,11 @@ final class CleanViewModel: ObservableObject {
     /// Loads `CleanRules.json` from `Bundle.main`, builds the engine,
     /// and pre-selects categories where `defaultEnabled == true`. Sets
     /// `lastError` (and leaves state empty) on failure.
+    /// Idempotent — once a catalog is loaded, repeated calls are no-ops
+    /// so re-mounting the view via tab-switch preserves selection + scan.
     func loadCatalog() async {
+        guard categories.isEmpty else { return }
+
         guard let url = Bundle.main.url(forResource: "CleanRules", withExtension: "json") else {
             lastError = "Catalog not found in app bundle"
             logger.error("CleanRules.json not found in Bundle.main")

@@ -5,7 +5,7 @@ import SwiftUI
 /// footer) per SPEC section 8. Owns the view-model via @StateObject;
 /// children receive it via @ObservedObject.
 struct CleanView: View {
-    @StateObject private var vm = CleanViewModel()
+    @ObservedObject var vm: CleanViewModel
 
     private let columns = [
         GridItem(.flexible(), spacing: Spacing.xl, alignment: .top),
