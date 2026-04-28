@@ -317,3 +317,59 @@ with `#Preview` and are visually verified, not unit-tested. No deviation.
   `.gesture(SpatialTapGesture())` against the cached layout array.
 - Trash button red color in `.contextMenu` may not render on all macOS
   12.x point releases; verify visually on real machine.
+
+## Task 7 — AnalyzeView + RootView wiring — DONE
+
+**Files changed:** 1 added (Burrow/Views/Analyze/AnalyzeView.swift, ~225 lines),
+1 modified (Burrow/App/RootView.swift — single line: `placeholder(for: .analyze)`
+→ `AnalyzeView()` at line 91).
+**Build:** clean.
+**Tests:** 157 passing / 157 total (no new tests; integration tests
+arrive in Task 8).
+
+### What got built
+- 3-state composition driven by `AnalyzeViewModel`:
+  - **Empty** (`currentRoot == nil && !isScanning && scanError == nil`):
+    `EmptyState(icon: "chart.pie", title: "Scan your home folder", ...)`
+    with primary "Scan home" action.
+  - **Scanning** (`isScanning == true`): centered VStack with
+    `ProgressView()`, entries-scanned + bytes line, abbreviated
+    currentPath in monoS, and a Cancel `OutlineButton`.
+  - **Scanned**: header (Breadcrumb + Rescan button + stats line) over
+    Divider over body (Treemap | Insights at ≥900pt; stacked vertically
+    at <900pt via GeometryReader-tracked containerWidth).
+  - **Error banner**: shown above empty state when `scanError != nil`,
+    with "Try again" outline button.
+- Two private helpers: `humanBytes(_:)` (ByteCountFormatter) and
+  `abbreviatedPath(_:maxChars:)` (~/ prefix + middle ellipsis at 60 chars).
+
+### Issues encountered
+- Sonnet's first attempt used `Color(hex: 0xFEE2E2)` literal in the
+  error banner background, violating UI_ARCH "hex literals reserved
+  for DesignTokens.swift only". Caught in audit; fixed to
+  `Color.Risk.highBG` (already defined in DesignTokens with the same
+  hex value). One-line edit.
+
+### Deviations from PHASE3_PLAN.md
+- No `#Preview` for AnalyzeView (intentional per brief: instantiating
+  `AnalyzeViewModel()` in a preview triggers a real disk scan). Inline
+  comment at end of file directs reviewers to the Wave 4 component
+  previews instead.
+- Responsive collapse threshold 900pt enforced via `GeometryReader` +
+  `containerWidth` `@State` rather than `ViewThatFits` (macOS 13+
+  unavailable).
+
+### Decisions made
+- Layout choice: GeometryReader-tracked width vs sticking to a fixed
+  HStack — chose GeometryReader to satisfy spec acceptance "narrowing
+  the window collapses insights below the treemap on narrow widths
+  (< 900pt)".
+- Error path: render banner *above* the empty state (not as a
+  sheet/overlay) so a user mid-scan-error can immediately retry from
+  the same scroll position.
+
+### Open issues for user to review on return
+- The 900pt collapse threshold is a guess; may need tuning once
+  rendered on a real 13" MacBook (effective width ≈ 1280 minus
+  sidebar ≈ 220 = 1060pt — comfortably above 900, so default state
+  is side-by-side on the smallest target).

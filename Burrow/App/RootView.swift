@@ -88,7 +88,7 @@ struct RootView: View {
         switch selection {
         case .clean:     CleanView()
         case .uninstall: UninstallView()
-        case .analyze:   placeholder(for: .analyze)
+        case .analyze:   AnalyzeView()
         case .status:    placeholder(for: .status)
         }
     }
