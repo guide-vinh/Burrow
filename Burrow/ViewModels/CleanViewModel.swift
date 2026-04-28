@@ -239,6 +239,21 @@ final class CleanViewModel: ObservableObject {
             .reduce(0, +)
     }
 
+    /// True iff every loaded category is selected. Drives the
+    /// "Select all" header checkbox.
+    var allCategoriesSelected: Bool {
+        !categories.isEmpty && selectedCategoryIds.count == categories.count
+    }
+
+    /// Toggle every category on (any → all) or off (all → none).
+    func toggleSelectAll() {
+        if allCategoriesSelected {
+            selectedCategoryIds = []
+        } else {
+            selectedCategoryIds = Set(categories.map(\.id))
+        }
+    }
+
     /// Categories grouped by `CategoryGroup`, sorted alphabetically by
     /// the group's raw value for stable UI ordering.
     var categoriesByGroup: [(group: CategoryGroup, categories: [CleanCategory])] {

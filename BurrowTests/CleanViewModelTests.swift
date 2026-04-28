@@ -302,6 +302,43 @@ final class CleanViewModelTests: XCTestCase {
         XCTAssertEqual(filtered.map(\.id), ["present"])
     }
 
+    // MARK: - Select all
+
+    func testAllCategoriesSelectedReflectsSelection() {
+        let vm = CleanViewModel(catalog: syntheticCatalog(), log: freshLog())
+        // Default: defaultEnabled=true so all are selected.
+        XCTAssertTrue(vm.allCategoriesSelected)
+
+        vm.selectedCategoryIds = []
+        XCTAssertFalse(vm.allCategoriesSelected)
+    }
+
+    func testToggleSelectAllFlipsBetweenAllAndNone() {
+        let vm = CleanViewModel(catalog: syntheticCatalog(), log: freshLog())
+        XCTAssertTrue(vm.allCategoriesSelected, "starts with all selected")
+
+        vm.toggleSelectAll()
+        XCTAssertTrue(vm.selectedCategoryIds.isEmpty, "first toggle clears")
+
+        vm.toggleSelectAll()
+        XCTAssertTrue(vm.allCategoriesSelected, "second toggle re-selects all")
+    }
+
+    func testToggleSelectAllFromPartialSelectionSelectsAll() {
+        // Build a 2-category catalog so partial selection is meaningful.
+        let a = CleanCategory(id: "a", title: "A", summary: "", group: .system, icon: "a", risk: .low,
+                              defaultEnabled: false, requiresAppQuit: nil, exclude: nil, rules: [])
+        let b = CleanCategory(id: "b", title: "B", summary: "", group: .system, icon: "b", risk: .low,
+                              defaultEnabled: false, requiresAppQuit: nil, exclude: nil, rules: [])
+        let vm = CleanViewModel(catalog: CleanCatalog(schemaVersion: 1, categories: [a, b]), log: freshLog())
+
+        vm.selectedCategoryIds = ["a"]   // partial
+        XCTAssertFalse(vm.allCategoriesSelected)
+
+        vm.toggleSelectAll()
+        XCTAssertEqual(vm.selectedCategoryIds, ["a", "b"], "partial → all")
+    }
+
     func testFilterInstalledKeepsCommandRulesUnconditionally() {
         let cmd = CleanCategory(
             id: "cmd", title: "Command", summary: "",

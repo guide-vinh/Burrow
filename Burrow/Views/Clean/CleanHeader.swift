@@ -21,6 +21,18 @@ struct CleanHeader: View {
             Spacer(minLength: Spacing.md)
 
             HStack(spacing: Spacing.sm) {
+                BurrowCheckbox(isOn: Binding(
+                    get: { vm.allCategoriesSelected },
+                    set: { _ in vm.toggleSelectAll() }
+                ))
+                Text("Select all")
+                    .font(.bodyS)
+                    .foregroundStyle(Color.fgSecondary)
+                    .onTapGesture { vm.toggleSelectAll() }
+            }
+            .disabled(vm.categories.isEmpty)
+
+            HStack(spacing: Spacing.sm) {
                 Text("Dry run")
                     .font(.bodyS)
                     .foregroundStyle(Color.fgSecondary)
