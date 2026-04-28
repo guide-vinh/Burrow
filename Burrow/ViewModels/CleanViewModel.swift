@@ -67,12 +67,38 @@ final class CleanViewModel: ObservableObject {
             return
         }
 
-        self.categories = catalog.categories
-        self.engine = RuleEngine(catalog: catalog, log: log)
-        self.selectedCategoryIds = Set(catalog.categories.filter { $0.defaultEnabled }.map(\.id))
+        let installed = Self.filterInstalled(catalog.categories)
+        let installedCatalog = CleanCatalog(
+            schemaVersion: catalog.schemaVersion,
+            categories: installed
+        )
+
+        self.categories = installed
+        self.engine = RuleEngine(catalog: installedCatalog, log: log)
+        self.selectedCategoryIds = Set(installed.filter { $0.defaultEnabled }.map(\.id))
         self.lastError = nil
 
-        logger.info("Catalog loaded: \(catalog.categories.count, privacy: .public) categories")
+        logger.info(
+            "Catalog loaded: \(installed.count, privacy: .public) of \(catalog.categories.count, privacy: .public) categories present on disk"
+        )
+    }
+
+    /// Drops categories whose every rule resolves to nothing on disk.
+    /// Keeps categories with at least one existing path. Command-only
+    /// rules are always kept (we can't probe whether the executable
+    /// will succeed without running it).
+    static func filterInstalled(_ categories: [CleanCategory]) -> [CleanCategory] {
+        categories.filter { category in
+            category.rules.contains { rule in
+                switch rule {
+                case let .directoryContents(path, _, _, _),
+                     let .glob(path, _, _, _):
+                    return !PathResolver.resolve(path).isEmpty
+                case .command:
+                    return true
+                }
+            }
+        }
     }
 
     // MARK: - Scan

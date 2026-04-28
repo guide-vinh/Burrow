@@ -276,4 +276,43 @@ final class CleanViewModelTests: XCTestCase {
         XCTAssertEqual(grouped[1].group, .developer)
         XCTAssertEqual(grouped[2].group, .system)
     }
+
+    // MARK: - filterInstalled
+
+    func testFilterInstalledKeepsCategoryWhenAtLeastOnePathExists() {
+        let present = CleanCategory(
+            id: "present", title: "Present", summary: "",
+            group: .system, icon: "trash", risk: .low,
+            defaultEnabled: true, requiresAppQuit: nil, exclude: nil,
+            rules: [
+                .directoryContents(path: fixture.path, olderThanDays: nil, includeHidden: nil, needsPrivilege: nil),
+                .directoryContents(path: "/this/does/not/exist", olderThanDays: nil, includeHidden: nil, needsPrivilege: nil),
+            ]
+        )
+        let absent = CleanCategory(
+            id: "absent", title: "Absent", summary: "",
+            group: .browser, icon: "globe", risk: .low,
+            defaultEnabled: true, requiresAppQuit: nil, exclude: nil,
+            rules: [
+                .directoryContents(path: "/no/such/path/at/all", olderThanDays: nil, includeHidden: nil, needsPrivilege: nil),
+            ]
+        )
+
+        let filtered = CleanViewModel.filterInstalled([present, absent])
+        XCTAssertEqual(filtered.map(\.id), ["present"])
+    }
+
+    func testFilterInstalledKeepsCommandRulesUnconditionally() {
+        let cmd = CleanCategory(
+            id: "cmd", title: "Command", summary: "",
+            group: .system, icon: "terminal", risk: .low,
+            defaultEnabled: false, requiresAppQuit: nil, exclude: nil,
+            rules: [
+                .command(exec: "/usr/bin/true", args: nil, needsPrivilege: nil),
+            ]
+        )
+        let filtered = CleanViewModel.filterInstalled([cmd])
+        XCTAssertEqual(filtered.map(\.id), ["cmd"],
+                       "command rules should never be hidden — we can't probe without running")
+    }
 }
