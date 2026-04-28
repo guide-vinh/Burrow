@@ -136,6 +136,166 @@
       ]
     },
     {
+      "id": "developer.nvm_cache",
+      "title": "nvm cache",
+      "summary": "Node Version Manager download cache; re-downloaded on next install",
+      "group": "developer",
+      "icon": "package",
+      "risk": "low",
+      "defaultEnabled": true,
+      "rules": [
+        { "kind": "directoryContents", "path": "~/.nvm/.cache" }
+      ]
+    },
+    {
+      "id": "developer.fvm_versions",
+      "title": "fvm cached SDKs",
+      "summary": "Flutter SDKs cached by fvm; each version is large and re-downloads slowly",
+      "group": "developer",
+      "icon": "shippingbox",
+      "risk": "medium",
+      "defaultEnabled": false,
+      "rules": [
+        { "kind": "directoryContents", "path": "~/fvm/versions" },
+        { "kind": "directoryContents", "path": "~/.fvm/versions" }
+      ]
+    },
+    {
+      "id": "developer.yarn_cache",
+      "title": "Yarn cache",
+      "summary": "Yarn package cache; re-downloaded on next install",
+      "group": "developer",
+      "icon": "package",
+      "risk": "low",
+      "defaultEnabled": true,
+      "rules": [
+        { "kind": "directoryContents", "path": "~/Library/Caches/Yarn" },
+        { "kind": "directoryContents", "path": "~/.yarn/cache" }
+      ]
+    },
+    {
+      "id": "developer.pnpm_store",
+      "title": "pnpm store",
+      "summary": "pnpm content-addressable package store; rebuilt on next install",
+      "group": "developer",
+      "icon": "package",
+      "risk": "low",
+      "defaultEnabled": true,
+      "rules": [
+        { "kind": "directoryContents", "path": "~/Library/pnpm/store" }
+      ]
+    },
+    {
+      "id": "developer.gem_cache",
+      "title": "Ruby gems cache",
+      "summary": "Per-Ruby-version gem download cache; re-downloaded on next bundle install",
+      "group": "developer",
+      "icon": "shippingbox",
+      "risk": "low",
+      "defaultEnabled": true,
+      "rules": [
+        { "kind": "glob", "path": "~/.gem/ruby/*/cache" }
+      ]
+    },
+    {
+      "id": "developer.bundler_cache",
+      "title": "Bundler cache",
+      "summary": "Bundler vendor cache; re-downloaded on next bundle install",
+      "group": "developer",
+      "icon": "package",
+      "risk": "low",
+      "defaultEnabled": true,
+      "rules": [
+        { "kind": "directoryContents", "path": "~/.bundle/cache" }
+      ]
+    },
+    {
+      "id": "developer.cargo_cache",
+      "title": "Cargo registry cache",
+      "summary": "Rust crate download cache; re-downloaded on next cargo build",
+      "group": "developer",
+      "icon": "package",
+      "risk": "low",
+      "defaultEnabled": true,
+      "rules": [
+        { "kind": "directoryContents", "path": "~/.cargo/registry/cache" }
+      ]
+    },
+    {
+      "id": "developer.gradle_caches",
+      "title": "Gradle caches",
+      "summary": "Gradle build caches and downloaded dependencies",
+      "group": "developer",
+      "icon": "hammer",
+      "risk": "medium",
+      "defaultEnabled": false,
+      "rules": [
+        { "kind": "directoryContents", "path": "~/.gradle/caches" }
+      ]
+    },
+    {
+      "id": "developer.maven_repository",
+      "title": "Maven local repository",
+      "summary": "Maven local artifact cache; large, re-downloaded on next build",
+      "group": "developer",
+      "icon": "shippingbox",
+      "risk": "medium",
+      "defaultEnabled": false,
+      "rules": [
+        { "kind": "directoryContents", "path": "~/.m2/repository" }
+      ]
+    },
+    {
+      "id": "developer.pub_cache",
+      "title": "Dart pub cache",
+      "summary": "Dart and Flutter package cache; re-downloaded on next pub get",
+      "group": "developer",
+      "icon": "package",
+      "risk": "low",
+      "defaultEnabled": true,
+      "rules": [
+        { "kind": "directoryContents", "path": "~/.pub-cache" }
+      ]
+    },
+    {
+      "id": "developer.xcode_devicesupport",
+      "title": "Xcode iOS DeviceSupport",
+      "summary": "Per-device debug symbols; re-pulled when you reconnect a device",
+      "group": "developer",
+      "icon": "iphone",
+      "risk": "medium",
+      "defaultEnabled": false,
+      "rules": [
+        { "kind": "directoryContents", "path": "~/Library/Developer/Xcode/iOS DeviceSupport" },
+        { "kind": "directoryContents", "path": "~/Library/Developer/Xcode/watchOS DeviceSupport" },
+        { "kind": "directoryContents", "path": "~/Library/Developer/Xcode/tvOS DeviceSupport" }
+      ]
+    },
+    {
+      "id": "developer.xcode_archives",
+      "title": "Xcode Archives",
+      "summary": "Shipped build archives; deleting these breaks symbolication for crash reports",
+      "group": "developer",
+      "icon": "archivebox",
+      "risk": "high",
+      "defaultEnabled": false,
+      "rules": [
+        { "kind": "directoryContents", "path": "~/Library/Developer/Xcode/Archives" }
+      ]
+    },
+    {
+      "id": "developer.coresimulator_caches",
+      "title": "CoreSimulator caches",
+      "summary": "iOS Simulator runtime caches",
+      "group": "developer",
+      "icon": "iphone",
+      "risk": "low",
+      "defaultEnabled": true,
+      "rules": [
+        { "kind": "directoryContents", "path": "~/Library/Developer/CoreSimulator/Caches" }
+      ]
+    },
+    {
       "id": "app.slack",
       "title": "Slack",
       "summary": "Cache, service worker, and code cache",
