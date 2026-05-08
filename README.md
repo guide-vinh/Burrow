@@ -3,9 +3,16 @@
 > Native macOS cleaner inspired by [tw93/Mole](https://github.com/tw93/Mole).
 > Trash-first, JSON-driven, under 10 MB, runs on macOS 12+.
 
-**Status:** Phases 1, 2, 3a, and 3b complete (Clean, Uninstall, Analyze
-with incremental SQLite cache). See [SPEC.md](SPEC.md) and
-[ROADMAP.md](ROADMAP.md). First release `v0.1.0` is in progress.
+**Status:** Clean and Uninstall ship in v0.1.x. Analyze is paused behind a
+"coming soon" placeholder while the cache layer is hardened — see
+[ROADMAP.md](ROADMAP.md). Auto-update via Sparkle is wired up.
+
+## Install
+
+Grab the latest signed + notarized DMG from
+[Releases](https://github.com/guide-vinh/Burrow/releases/latest), drag
+**Burrow.app** to /Applications, launch. The app checks for updates
+daily through Sparkle; force-check via **Burrow → Check for Updates…**.
 
 ## Why
 
@@ -38,11 +45,15 @@ status in one native SwiftUI app, free and open source, that runs on a
 | `mo optimize` | Status (Optimize panel) | 3 |
 | `mo status` | Status | 4 |
 
-## Status
+## Build from source
 
-Phases 1, 2, 3a, and 3b complete. Phase 3c (privileged helper for
-Spotlight rebuild / DNS flush / icon services cache) next. Watch
-[Releases](../../releases) for the first DMG.
+```
+make hooks      # one-time, install commit-msg hook
+make build      # Debug build
+make run        # Debug + launch
+make test       # unit tests
+make release    # full release (prompts for version): sign + notarize + GitHub + appcast
+```
 
 ## Contributing
 
