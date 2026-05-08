@@ -9,10 +9,13 @@
 
 ## Install
 
-Grab the latest signed + notarized DMG from
-[Releases](https://github.com/guide-vinh/Burrow/releases/latest), drag
-**Burrow.app** to /Applications, launch. The app checks for updates
-daily through Sparkle; force-check via **Burrow → Check for Updates…**.
+📥 **[Download Burrow-0.1.0.dmg](https://github.com/guide-vinh/Burrow/releases/download/v0.1.0/Burrow-0.1.0.dmg)** — signed + notarized, 1.6 MB.
+
+Or browse all releases: <https://github.com/guide-vinh/Burrow/releases/latest>.
+
+Open the DMG, drag **Burrow.app** to /Applications, launch. The app
+checks for updates daily through Sparkle; force-check anytime via
+**Burrow → Check for Updates…**.
 
 ## Why
 
