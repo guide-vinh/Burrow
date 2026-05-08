@@ -3,8 +3,10 @@ import SwiftUI
 
 /// Sidebar shell. Holds the four primary destinations (Clean, Uninstall,
 /// Analyze, Status) plus a Settings row at the bottom. Detail area
-/// switches manually based on `selection` — `NavigationSplitView` is
-/// macOS 13+ so we use the macOS-12-compatible `NavigationView`.
+/// switches manually based on `selection`. We avoid `NavigationView` —
+/// its underlying NSSplitViewController re-runs its column-sizing pass
+/// when the detail identity changes, which makes the sidebar flicker
+/// briefly between tab switches before the `.frame` constraint applies.
 struct RootView: View {
 
     @State private var selection: SidebarDestination = .clean
@@ -18,11 +20,14 @@ struct RootView: View {
     @StateObject private var analyzeVM = AnalyzeViewModel()
 
     var body: some View {
-        NavigationView {
+        HStack(spacing: 0) {
             sidebar
+                .layoutPriority(1)
+            Divider()
+                .background(Color.borderSubtle)
             detail
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .navigationViewStyle(.columns)
         .frame(minWidth: 980, minHeight: 640)
         .task { await refreshFDAState() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
@@ -48,7 +53,8 @@ struct RootView: View {
             Spacer(minLength: 0)
             settingsFooter
         }
-        .frame(minWidth: 220, idealWidth: 220, maxWidth: 220)
+        .frame(width: 220)
+        .fixedSize(horizontal: true, vertical: false)
         .sidebarStyle()
     }
 
@@ -60,7 +66,7 @@ struct RootView: View {
                 .foregroundStyle(Color.fgPrimary)
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, Spacing.md)
+        .padding(.horizontal, Spacing.md + Spacing.sm)
         .padding(.top, Spacing.lg)
         .padding(.bottom, Spacing.xl)
     }

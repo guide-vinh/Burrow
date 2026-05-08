@@ -10,11 +10,16 @@ struct UninstallView: View {
     @State private var isDropping = false
 
     var body: some View {
-        HSplitView {
+        // Plain HStack — not HSplitView — because NSSplitView's column-sizing
+        // pass on mount propagates up to the parent HStack and flickers the
+        // root sidebar width on tab switch into Uninstall.
+        HStack(spacing: 0) {
             sidebar
-                .frame(minWidth: 280, idealWidth: 320, maxWidth: 380)
+                .frame(width: 320)
+            Divider()
+                .background(Color.borderSubtle)
             UninstallDetail(vm: vm)
-                .frame(minWidth: 480, maxWidth: .infinity, maxHeight: .infinity)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .background(Color.surfacePrimary)
         .overlay(dropTargetOverlay)
@@ -47,7 +52,7 @@ struct UninstallView: View {
                 .font(.bodyS)
                 .foregroundStyle(Color.fgPrimary)
         }
-        .padding(.horizontal, Spacing.md)
+        .padding(.horizontal, Spacing.md + Spacing.sm)
         .padding(.vertical, Spacing.sm + 2)
     }
 
