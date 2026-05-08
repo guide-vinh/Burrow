@@ -10,6 +10,8 @@ struct RiskPill: View {
         Text(level.rawValue.uppercased())
             .font(.pill)
             .tracking(0.5)
+            .lineLimit(1)
+            .fixedSize()
             .padding(.horizontal, Spacing.sm)
             .padding(.vertical, 2)
             .background(level.background)

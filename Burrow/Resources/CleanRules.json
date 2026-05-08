@@ -77,7 +77,7 @@
     },
     {
       "id": "developer.xcode_deriveddata",
-      "title": "Xcode DerivedData",
+      "title": "Xcode derived data",
       "summary": "Build outputs and indexes; safe but rebuild takes time",
       "group": "developer",
       "icon": "hammer",
@@ -211,7 +211,7 @@
     },
     {
       "id": "developer.cargo_cache",
-      "title": "Cargo registry cache",
+      "title": "Cargo cache",
       "summary": "Rust crate download cache; re-downloaded on next cargo build",
       "group": "developer",
       "icon": "package",
@@ -235,7 +235,7 @@
     },
     {
       "id": "developer.maven_repository",
-      "title": "Maven local repository",
+      "title": "Maven repository",
       "summary": "Maven local artifact cache; large, re-downloaded on next build",
       "group": "developer",
       "icon": "shippingbox",
@@ -259,7 +259,7 @@
     },
     {
       "id": "developer.xcode_devicesupport",
-      "title": "Xcode iOS DeviceSupport",
+      "title": "Xcode device support",
       "summary": "Per-device debug symbols; re-pulled when you reconnect a device",
       "group": "developer",
       "icon": "iphone",
@@ -285,7 +285,7 @@
     },
     {
       "id": "developer.coresimulator_caches",
-      "title": "CoreSimulator caches",
+      "title": "Simulator caches",
       "summary": "iOS Simulator runtime caches",
       "group": "developer",
       "icon": "iphone",

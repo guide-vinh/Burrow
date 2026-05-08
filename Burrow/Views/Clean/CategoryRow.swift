@@ -20,6 +20,26 @@ struct CategoryRow: View {
             Text(category.title)
                 .font(.bodyM)
                 .foregroundStyle(Color.fgPrimary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+
+            Spacer(minLength: Spacing.sm)
+
+            RiskPill(level: category.risk)
+
+            if let bytes = scanResult?.totalBytes {
+                Group {
+                    if bytes > 0 {
+                        Text(bytes, format: .byteCount(style: .file))
+                    } else {
+                        Text("—")
+                    }
+                }
+                .font(.bodyS)
+                .foregroundStyle(Color.fgSecondary)
+                .frame(minWidth: 70, alignment: .trailing)
+                .monospacedDigit()
+            }
 
             Button(action: onReveal) {
                 Image(systemName: "info.circle")
@@ -28,20 +48,10 @@ struct CategoryRow: View {
             }
             .buttonStyle(.plain)
             .help("Show in Finder")
-
-            Spacer(minLength: Spacing.sm)
-
-            RiskPill(level: category.risk)
-
-            if let bytes = scanResult?.totalBytes {
-                Text(bytes, format: .byteCount(style: .file))
-                    .font(.bodyS)
-                    .foregroundStyle(Color.fgSecondary)
-                    .frame(minWidth: 70, alignment: .trailing)
-                    .monospacedDigit()
-            }
         }
         .padding(.horizontal, Spacing.md)
         .padding(.vertical, Spacing.sm)
+        .contentShape(Rectangle())
+        .help(category.title)
     }
 }
