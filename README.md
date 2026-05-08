@@ -1,7 +1,13 @@
-# 🐹 Burrow
+<p align="center">
+  <img src="Burrow/Resources/Assets.xcassets/AppIcon.appiconset/icon_256.png" width="128" height="128" alt="Burrow icon" />
+</p>
 
-> Native macOS cleaner inspired by [tw93/Mole](https://github.com/tw93/Mole).
-> Trash-first, JSON-driven, under 10 MB, runs on macOS 12+.
+<h1 align="center">Burrow</h1>
+
+<p align="center">
+  Native macOS cleaner inspired by <a href="https://github.com/tw93/Mole">tw93/Mole</a>.<br/>
+  Trash-first, JSON-driven, under 10&nbsp;MB, runs on macOS&nbsp;12+.
+</p>
 
 **Status:** Clean and Uninstall ship in v0.1.x. Analyze is paused behind a
 "coming soon" placeholder while the cache layer is hardened — see
