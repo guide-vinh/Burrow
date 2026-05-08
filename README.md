@@ -82,12 +82,9 @@ biggest open chunks.
 
 ## Known Phase 1 limitations
 
-Things that are intentionally deferred or scoped out for the v0.1.0
+Things that are intentionally deferred or scoped out for the v0.1.x
 release. Each is tracked here so contributors don't re-discover them.
 
-- **Catalog is a 2-category stub** (Chrome cache + system logs). The
-  full 40+ category catalog is the highest-value Phase 1 follow-up;
-  contributions welcome via JSON.
 - **`requiresAppQuit` warn-before-delete** is parsed by the catalog
   loader but the engine doesn't gate on it yet. Phase 5 polish adds
   a confirmation sheet before deleting from a running app's data.
