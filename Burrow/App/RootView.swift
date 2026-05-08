@@ -87,10 +87,34 @@ struct RootView: View {
 
     private var settingsFooter: some View {
         VStack(spacing: 0) {
-            SidebarRow(icon: "gear", title: "Settings", isActive: false) {}
+            SidebarRow(icon: "gear", title: "Settings", isActive: false) {
+                openSettings()
+            }
+            Text("v\(appVersion)")
+                .font(.bodyS)
+                .foregroundStyle(Color.fgMuted)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, Spacing.md + Spacing.sm)
+                .padding(.top, Spacing.xs)
         }
         .padding(.horizontal, Spacing.sm)
         .padding(.bottom, Spacing.md)
+    }
+
+    /// `CFBundleShortVersionString` from Info.plist; falls back to "—".
+    private var appVersion: String {
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—"
+    }
+
+    /// Opens the SwiftUI `Settings` scene. macOS 14 has a first-class
+    /// `@Environment(\.openSettings)` for this; macOS 12/13 still need the
+    /// AppKit selector route, so use that and stay deployment-target-clean.
+    private func openSettings() {
+        if #available(macOS 14, *) {
+            NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        } else {
+            NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
+        }
     }
 
     // MARK: - Detail

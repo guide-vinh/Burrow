@@ -26,5 +26,13 @@
 	<string></string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>SUFeedURL</key>
+	<string>https://gist.githubusercontent.com/guide-vinh/8b71ecd743dadfba09878aca26795040/raw/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>5NF9JIl+KzvRbOoiw3/Ec50LV3Lvj+1OyrWr68/FyUc=</string>
+	<key>SUScheduledCheckInterval</key>
+	<integer>86400</integer>
 </dict>
 </plist>
