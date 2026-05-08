@@ -6,109 +6,16 @@
         <description>Burrow update feed</description>
         <language>en</language>
 
-        <!--
-            Add a new <item> at the top each release. The values below are
-            placeholders — fill in before publishing.
-
-            sparkle:edSignature comes from `bin/sign_update Burrow-X.Y.Z.zip`
-            (Sparkle's tools tarball). length is the byte size of the .zip.
-        -->
-        <!--
-        <item>
-            <title>Version 0.1.0</title>
-            <pubDate>Thu, 08 May 2026 00:00:00 +0000</pubDate>
-            <sparkle:version>1</sparkle:version>
-            <sparkle:shortVersionString>0.1.0</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>12.0</sparkle:minimumSystemVersion>
-            <enclosure
-                url="https://github.com/guide-vinh/Burrow/releases/download/v0.1.0/Burrow-0.1.0.zip"
-                sparkle:edSignature="REPLACE_WITH_SIGNATURE"
-                length="REPLACE_WITH_BYTES"
-                type="application/octet-stream" />
-        </item>
-        -->
         <item>
             <title>Version 0.1.1</title>
-            <pubDate>Fri, 08 May 2026 07:00:00 +0000</pubDate>
-            <sparkle:version>0.1.1</sparkle:version>
-            <sparkle:shortVersionString>0.1.1</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>12.0</sparkle:minimumSystemVersion>
-            <enclosure
-                url="https://github.com/guide-vinh/Burrow/releases/download/v0.1.1/Burrow-0.1.1.zip"
-                sparkle:edSignature="+Txf59SgTpOH1z1w7vWLVvKvzl+yn/6DFBn1DRKWkswpOylaoPbVnqfgqMJ59w4Lid8gVRYRkBRSULkzJfkvCA=="
-                length="1927367"
-                type="application/octet-stream" />
-        </item>
-        <item>
-            <title>Version 0.1.0</title>
-            <pubDate>Fri, 08 May 2026 08:49:35 +0000</pubDate>
-            <sparkle:version>0.1.0</sparkle:version>
-            <sparkle:shortVersionString>0.1.0</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>12.0</sparkle:minimumSystemVersion>
-            <enclosure
-                url="https://github.com/guide-vinh/Burrow/releases/download/v0.1.0/Burrow-0.1.0.zip"
-                sparkle:edSignature="i8oVmfRfpuRs0yn1hmkG8hKzqcn26CTqgz6aXinfC/ONQ2mUO4NrLBhxRxUlsUIDc4d0v/F3P6FCz7n7/v1DCA=="
-                length="1929543"
-                type="application/octet-stream" />
-        </item>
-        <item>
-            <title>Version 0.1.1</title>
-            <pubDate>Fri, 08 May 2026 08:54:22 +0000</pubDate>
-            <sparkle:version>0.1.1</sparkle:version>
-            <sparkle:shortVersionString>0.1.1</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>12.0</sparkle:minimumSystemVersion>
-            <enclosure
-                url="https://github.com/guide-vinh/Burrow/releases/download/v0.1.1/Burrow-0.1.1.zip"
-                sparkle:edSignature="/+3rWBH5NR1IKuEs52rPNDRQmVA22vuF3Uo0bPctVHOOa07nXXJfMMYTNu5h7R3Ts3+bW6mKfWNQHOCulH5bCA=="
-                length="1929530"
-                type="application/octet-stream" />
-        </item>
-        <item>
-            <title>Version release</title>
-            <pubDate>Fri, 08 May 2026 09:06:15 +0000</pubDate>
+            <pubDate>Fri, 08 May 2026 10:40:02 +0000</pubDate>
             <sparkle:version>2</sparkle:version>
-            <sparkle:shortVersionString>release</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>12.0</sparkle:minimumSystemVersion>
-            <enclosure
-                url="https://github.com/guide-vinh/Burrow/releases/download/vrelease/Burrow-release.zip"
-                sparkle:edSignature="ml5AZg7y41YdrXEHL1KEEPfan6x48kHn98gV7mFyLENDmJ0Mtyj708PHeiCCk58t0aVuf9mBxcYhfPgH6EG6CQ=="
-                length="1708094"
-                type="application/octet-stream" />
-        </item>
-        <item>
-            <title>Version 0.1.1</title>
-            <pubDate>Fri, 08 May 2026 09:08:28 +0000</pubDate>
-            <sparkle:version>3</sparkle:version>
             <sparkle:shortVersionString>0.1.1</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>12.0</sparkle:minimumSystemVersion>
             <enclosure
                 url="https://github.com/guide-vinh/Burrow/releases/download/v0.1.1/Burrow-0.1.1.zip"
-                sparkle:edSignature="SdrRjZBcQdDBwaRG3bhVVuvYYTrn/2fmGe8hU8lkZqWvTBzW3WQngHyCQfrvxvTVur0V9XYLZiM+4nEVINCKDw=="
-                length="1708109"
-                type="application/octet-stream" />
-        </item>
-        <item>
-            <title>Version 0.1.0</title>
-            <pubDate>Fri, 08 May 2026 09:11:08 +0000</pubDate>
-            <sparkle:version>4</sparkle:version>
-            <sparkle:shortVersionString>0.1.0</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>12.0</sparkle:minimumSystemVersion>
-            <enclosure
-                url="https://github.com/guide-vinh/Burrow/releases/download/v0.1.0/Burrow-0.1.0.zip"
-                sparkle:edSignature="xq7H5qoG/XgXv/fACg+IWsFTba9+XFiGyK8Rh+4vI3cbGFxryArm0qG/bFTUWt4wQTDjJenU1IqPBMuAe+pfBg=="
-                length="1708103"
-                type="application/octet-stream" />
-        </item>
-        <item>
-            <title>Version 0.1.1</title>
-            <pubDate>Fri, 08 May 2026 09:14:58 +0000</pubDate>
-            <sparkle:version>5</sparkle:version>
-            <sparkle:shortVersionString>0.1.1</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>12.0</sparkle:minimumSystemVersion>
-            <enclosure
-                url="https://github.com/guide-vinh/Burrow/releases/download/v0.1.1/Burrow-0.1.1.zip"
-                sparkle:edSignature="9THq6NEwM0aWhzD2UK/TG+cLjp2jFtpEZAKlE7Y+PlffjjIj55veq8oN4+oBGa9RZv85claUIF201wSpgC0sBg=="
-                length="1917663"
+                sparkle:edSignature="yEsOeYzJdneJKfPPItJn8vIZc1t/OSZ4AKfFrg1j9tokJ7Lnk0TeADUosIYk4QQ7xWBf3hF4Z9xCGxw5hNeuDA=="
+                length="1708100"
                 type="application/octet-stream" />
         </item>
         <item>
@@ -121,18 +28,6 @@
                 url="https://github.com/guide-vinh/Burrow/releases/download/v0.1.0/Burrow-0.1.0.zip"
                 sparkle:edSignature="eT2LAHtgjnAl+2DtYNLZs1XqDNWjjM9dtvyb5sI8Y7VHottr71RQ6XzQv5ww3/V32BlSMymrRV/iL2UL6l+oBA=="
                 length="1708087"
-                type="application/octet-stream" />
-        </item>
-        <item>
-            <title>Version 0.1.1</title>
-            <pubDate>Fri, 08 May 2026 10:40:02 +0000</pubDate>
-            <sparkle:version>2</sparkle:version>
-            <sparkle:shortVersionString>0.1.1</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>12.0</sparkle:minimumSystemVersion>
-            <enclosure
-                url="https://github.com/guide-vinh/Burrow/releases/download/v0.1.1/Burrow-0.1.1.zip"
-                sparkle:edSignature="yEsOeYzJdneJKfPPItJn8vIZc1t/OSZ4AKfFrg1j9tokJ7Lnk0TeADUosIYk4QQ7xWBf3hF4Z9xCGxw5hNeuDA=="
-                length="1708100"
                 type="application/octet-stream" />
         </item>
     </channel>
