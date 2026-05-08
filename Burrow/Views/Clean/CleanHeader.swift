@@ -39,7 +39,7 @@ struct CleanHeader: View {
                 BurrowToggle(isOn: $vm.dryRun)
             }
 
-            PrimaryButton("Scan") {
+            PrimaryButton(vm.isScanning ? "Scanning…" : "Scan", isLoading: vm.isScanning) {
                 Task { await vm.scan() }
             }
             .disabled(vm.isScanning || vm.categories.isEmpty)

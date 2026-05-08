@@ -4,20 +4,34 @@ import SwiftUI
 struct PrimaryButton: View {
     let title: String
     let icon: String?
+    let isLoading: Bool
     let action: () -> Void
 
     @Environment(\.isEnabled) private var isEnabled
 
-    init(_ title: String, icon: String? = nil, action: @escaping () -> Void) {
+    init(
+        _ title: String,
+        icon: String? = nil,
+        isLoading: Bool = false,
+        action: @escaping () -> Void
+    ) {
         self.title = title
         self.icon = icon
+        self.isLoading = isLoading
         self.action = action
     }
 
     var body: some View {
         Button(action: action) {
             HStack(spacing: Spacing.sm) {
-                if let icon { Image(systemName: icon) }
+                if isLoading {
+                    ProgressView()
+                        .progressViewStyle(.circular)
+                        .controlSize(.small)
+                        .tint(Color.fgInverse)
+                } else if let icon {
+                    Image(systemName: icon)
+                }
                 Text(title).font(.bodySMed)
             }
             .padding(.horizontal, Spacing.lg)
@@ -25,9 +39,13 @@ struct PrimaryButton: View {
             .background(Color.accentPrimary)
             .foregroundStyle(Color.fgInverse)
             .clipShape(RoundedRectangle(cornerRadius: Radius.md, style: .continuous))
-            .opacity(isEnabled ? 1.0 : 0.4)
+            // Only fade for "logically disabled" (e.g. catalog not loaded);
+            // during isLoading, keep full opacity so the spinner + text stay
+            // readable on the coral background.
+            .opacity((isEnabled || isLoading) ? 1.0 : 0.6)
         }
         .buttonStyle(.plain)
+        .allowsHitTesting(!isLoading)
     }
 }
 

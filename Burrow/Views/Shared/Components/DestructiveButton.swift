@@ -27,7 +27,7 @@ struct DestructiveButton: View {
             .background(Color.destructive)
             .foregroundStyle(Color.fgInverse)
             .clipShape(RoundedRectangle(cornerRadius: Radius.md, style: .continuous))
-            .opacity(isEnabled ? 1.0 : 0.4)
+            .opacity(isEnabled ? 1.0 : 0.6)
         }
         .buttonStyle(.plain)
     }
