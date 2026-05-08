@@ -145,6 +145,7 @@ struct UninstallDetail: View {
             }
             .padding(.horizontal, Spacing.md)
             .padding(.vertical, Spacing.sm)
+            .tooltip(app.bundleURL.path)
         }
     }
 

@@ -36,6 +36,7 @@ struct AppListRow: View {
             .clipShape(RoundedRectangle(cornerRadius: Radius.md, style: .continuous))
         }
         .buttonStyle(.plain)
+        .tooltip("\(app.name)\n\(app.bundleId)")
     }
 }
 

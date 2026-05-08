@@ -22,8 +22,8 @@ struct CategoryRow: View {
                 .foregroundStyle(Color.fgPrimary)
                 .lineLimit(1)
                 .truncationMode(.tail)
-
-            Spacer(minLength: Spacing.sm)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .tooltip(category.title)
 
             RiskPill(level: category.risk)
 
@@ -51,7 +51,5 @@ struct CategoryRow: View {
         }
         .padding(.horizontal, Spacing.md)
         .padding(.vertical, Spacing.sm)
-        .contentShape(Rectangle())
-        .help(category.title)
     }
 }

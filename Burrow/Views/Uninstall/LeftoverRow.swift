@@ -60,6 +60,7 @@ struct LeftoverRow: View {
         .padding(.vertical, Spacing.sm)
         .opacity(requiresPrivilege ? 0.5 : 1.0)
         .disabled(requiresPrivilege)
+        .tooltip(match.url.path)
     }
 }
 
