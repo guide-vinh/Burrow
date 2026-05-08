@@ -1,8 +1,11 @@
+import AppKit
 import SwiftUI
 
 @main
 struct BurrowApp: App {
     @StateObject private var updater = UpdaterController()
+
+    private static let githubURL = URL(string: "https://github.com/guide-vinh/Burrow")!
 
     var body: some Scene {
         WindowGroup {
@@ -17,6 +20,11 @@ struct BurrowApp: App {
                     updater.checkForUpdates()
                 }
                 .disabled(!updater.canCheckForUpdates)
+            }
+            CommandGroup(after: .help) {
+                Button("Burrow on GitHub") {
+                    NSWorkspace.shared.open(Self.githubURL)
+                }
             }
         }
 
