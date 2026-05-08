@@ -137,14 +137,7 @@ LENGTH=$(stat -f %z "${ZIP_PATH}")
 echo "  sparkle:edSignature=${ED_SIGNATURE}"
 echo "  length=${LENGTH}"
 
-# 8. GitHub Release ----------------------------------------------------------
-step "gh release create v${VERSION}"
-gh release create "v${VERSION}" "${DMG_PATH}" "${ZIP_PATH}" \
-    --repo "${GH_REPO}" \
-    --title "v${VERSION}" \
-    --generate-notes
-
-# 9. Append to local appcast.xml --------------------------------------------
+# 8. Append to local appcast.xml --------------------------------------------
 step "append <item> to ${APPCAST_LOCAL}"
 PUB_DATE=$(date -u +"%a, %d %b %Y %H:%M:%S +0000")
 DOWNLOAD_URL="https://github.com/${GH_REPO}/releases/download/v${VERSION}/Burrow-${VERSION}.zip"
@@ -180,7 +173,25 @@ awk -v itemfile="${ITEM_FILE}" '
 mv "${TMP}" "${APPCAST_LOCAL}"
 rm -f "${ITEM_FILE}"
 
-# 10. Push appcast to gist ---------------------------------------------------
+# 9. Commit version bump + appcast entry, tag, push --------------------------
+# Done before `gh release create` so the GitHub release tag points at this
+# new commit (otherwise it would tag whatever HEAD is on the remote branch).
+step "git commit + tag v${VERSION}"
+BRANCH=$(git rev-parse --abbrev-ref HEAD)
+git add "${INFO_PLIST}" "${APPCAST_LOCAL}"
+git commit -m "chore(release): v${VERSION} (build ${NEW_BUILD})"
+git tag -a "v${VERSION}" -m "Burrow v${VERSION}"
+git push origin "${BRANCH}"
+git push origin "v${VERSION}"
+
+# 10. GitHub Release ---------------------------------------------------------
+step "gh release create v${VERSION}"
+gh release create "v${VERSION}" "${DMG_PATH}" "${ZIP_PATH}" \
+    --repo "${GH_REPO}" \
+    --title "v${VERSION}" \
+    --generate-notes
+
+# 11. Push appcast to gist ---------------------------------------------------
 step "push appcast to gist ${GIST_ID}"
 gh gist edit "${GIST_ID}" "${APPCAST_LOCAL}"
 
