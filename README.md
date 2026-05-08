@@ -9,6 +9,10 @@
   Trash-first, JSON-driven, under 10&nbsp;MB, runs on macOS&nbsp;12+.
 </p>
 
+<p align="center">
+  <img src="burrow-app.png" alt="Burrow app — Clean tab" width="640" />
+</p>
+
 **Status:** Clean and Uninstall ship in v0.1.x. Analyze is paused behind a
 "coming soon" placeholder while the cache layer is hardened — see
 [ROADMAP.md](ROADMAP.md). Auto-update via Sparkle is wired up.
