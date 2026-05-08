@@ -15,11 +15,10 @@
 
 ## Install
 
-📥 **[Download Burrow-0.1.0.dmg](https://github.com/guide-vinh/Burrow/releases/download/v0.1.0/Burrow-0.1.0.dmg)** — signed + notarized, 1.6 MB.
+[![Latest release](https://img.shields.io/github/v/release/guide-vinh/Burrow?label=Download%20DMG&style=for-the-badge)](https://github.com/guide-vinh/Burrow/releases/latest)
 
-Or browse all releases: <https://github.com/guide-vinh/Burrow/releases/latest>.
-
-Open the DMG, drag **Burrow.app** to /Applications, launch. The app
+Open the latest release page above and grab `Burrow-X.Y.Z.dmg` (signed +
+notarized). Drag **Burrow.app** to /Applications, launch. The app
 checks for updates daily through Sparkle; force-check anytime via
 **Burrow → Check for Updates…**.
 
