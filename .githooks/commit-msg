@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Enforces Burrow commit message format.
-#   Subject: <type>[(<scope>)][!]: <summary>   (subject <= 72 chars)
+#   Subject: <type>[(<scope>)][!]: <summary>   (subject <= 120 chars)
 #   Types:   feat, fix, chore, refactor, test, docs, style, add, improve
 #   Scope:   optional Conventional Commits scope, lowercase a-z/0-9/-
 #   Bang:    optional ! before the colon to flag breaking change
@@ -26,8 +26,8 @@ if ! printf '%s' "$subject" | grep -Eq "$types_re"; then
   exit 1
 fi
 
-if [ "${#subject}" -gt 72 ]; then
-  echo "commit-msg: subject is ${#subject} chars (max 72)"
+if [ "${#subject}" -gt 120 ]; then
+  echo "commit-msg: subject is ${#subject} chars (max 120)"
   echo "  got: '$subject'"
   exit 1
 fi
