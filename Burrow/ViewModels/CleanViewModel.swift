@@ -24,6 +24,12 @@ final class CleanViewModel: ObservableObject {
     @Published private(set) var lastError: String? = nil
     @Published private(set) var previewBanner: PreviewSummary? = nil
 
+    // node_modules section
+    @Published private(set) var nodeModulesEntries: [NodeModulesEntry] = []
+    @Published var nodeModulesSelection: Set<URL> = []
+    @Published private(set) var isScanningNodeModules: Bool = false
+    @Published var nodeModulesSort: NodeModulesSort = .parentMtime
+
     // MARK: - Dependencies
 
     private var engine: RuleEngine?
@@ -288,5 +294,93 @@ final class CleanViewModel: ObservableObject {
         return grouped
             .sorted { $0.key.rawValue < $1.key.rawValue }
             .map { (group: $0.key, categories: $0.value) }
+    }
+
+    // MARK: - node_modules
+
+    /// Sort key for the node_modules list.
+    enum NodeModulesSort: String, CaseIterable, Identifiable {
+        case parentMtime  // last project edit (excluding node_modules)
+        case nodeModulesMtime  // last `npm install` / build
+        case size  // descending size
+
+        var id: String { rawValue }
+        var label: String {
+            switch self {
+            case .parentMtime:      return "Project last edited"
+            case .nodeModulesMtime: return "node_modules last touched"
+            case .size:             return "Size"
+            }
+        }
+    }
+
+    /// Entries sorted per `nodeModulesSort`. View binds to this so the list
+    /// re-orders without re-scanning.
+    var sortedNodeModules: [NodeModulesEntry] {
+        switch nodeModulesSort {
+        case .parentMtime:
+            return nodeModulesEntries.sorted { $0.parentMtime < $1.parentMtime }
+        case .nodeModulesMtime:
+            return nodeModulesEntries.sorted { $0.nodeModulesMtime < $1.nodeModulesMtime }
+        case .size:
+            return nodeModulesEntries.sorted { $0.totalBytes > $1.totalBytes }
+        }
+    }
+
+    /// Total bytes of currently-selected entries — drives the footer label.
+    var nodeModulesSelectedBytes: Int64 {
+        nodeModulesEntries
+            .filter { nodeModulesSelection.contains($0.url) }
+            .reduce(0) { $0 + $1.totalBytes }
+    }
+
+    /// Walk `~/` looking for node_modules directories. Long-running on
+    /// large home dirs; toggles `isScanningNodeModules` for the duration.
+    func scanNodeModules() async {
+        isScanningNodeModules = true
+        defer { isScanningNodeModules = false }
+
+        let scanner = NodeModulesScanner()
+        let entries = await scanner.scanHomeDirectory()
+        nodeModulesEntries = entries
+        // Drop any prior selections that no longer exist on disk.
+        nodeModulesSelection.formIntersection(Set(entries.map(\.url)))
+
+        logger.info("node_modules scan: \(entries.count, privacy: .public) dirs")
+    }
+
+    /// Trash every selected node_modules dir. Honors `dryRun`. Removes
+    /// successfully-trashed entries from the list.
+    func trashSelectedNodeModules() async {
+        guard !nodeModulesSelection.isEmpty else { return }
+
+        let targets = nodeModulesEntries.filter { nodeModulesSelection.contains($0.url) }
+        var removed: Set<URL> = []
+        var bytesReclaimed: Int64 = 0
+
+        for entry in targets {
+            do {
+                let bytes = try await SafeFileOps.trash(entry.url, dryRun: dryRun)
+                bytesReclaimed += bytes
+                removed.insert(entry.url)
+                try? await log.append(OperationLogEntry(
+                    timestamp: Date(),
+                    action: .trash,
+                    target: entry.url.path,
+                    bytes: bytes,
+                    dryRun: dryRun
+                ))
+            } catch {
+                logger.error(
+                    "trash failed for \(entry.url.path, privacy: .public): \(error.localizedDescription, privacy: .public)"
+                )
+            }
+        }
+
+        if !dryRun {
+            nodeModulesEntries.removeAll { removed.contains($0.url) }
+            nodeModulesSelection.subtract(removed)
+        }
+        previewBanner = PreviewSummary(items: removed.count, bytes: bytesReclaimed)
     }
 }

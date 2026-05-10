@@ -27,14 +27,17 @@ struct CleanView: View {
             }
 
             ScrollView {
-                LazyVGrid(columns: columns, alignment: .leading, spacing: Spacing.xl) {
-                    ForEach(vm.categoriesByGroup, id: \.group) { entry in
-                        CategoryGroupSection(
-                            group: entry.group,
-                            categories: entry.categories,
-                            vm: vm
-                        )
+                VStack(alignment: .leading, spacing: Spacing.xl) {
+                    LazyVGrid(columns: columns, alignment: .leading, spacing: Spacing.xl) {
+                        ForEach(vm.categoriesByGroup, id: \.group) { entry in
+                            CategoryGroupSection(
+                                group: entry.group,
+                                categories: entry.categories,
+                                vm: vm
+                            )
+                        }
                     }
+                    NodeModulesSection(vm: vm)
                 }
                 .padding(Spacing.xl)
             }
