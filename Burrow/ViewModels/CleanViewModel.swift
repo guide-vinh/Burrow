@@ -236,6 +236,29 @@ final class CleanViewModel: ObservableObject {
         scanResults.values.reduce(0) { $0 + $1.totalBytes }
     }
 
+    /// True iff either category scan or node_modules scan is in flight.
+    var isScanningAny: Bool { isScanning || isScanningNodeModules }
+
+    /// Categories + node_modules combined item count for the footer label.
+    var combinedSelectedItemCount: Int {
+        selectedItemCount + nodeModulesSelection.count
+    }
+
+    /// Categories + node_modules combined byte total for the footer label.
+    var combinedSelectedBytes: Int64 {
+        selectedTotalBytes + nodeModulesSelectedBytes
+    }
+
+    /// Combined reclaimable across both lists — drives the header subtitle.
+    var combinedReclaimable: Int64 {
+        totalReclaimable + nodeModulesEntries.reduce(0) { $0 + $1.totalBytes }
+    }
+
+    /// True iff there's at least one selected category OR node_modules entry.
+    var hasAnySelection: Bool {
+        selectedItemCount > 0 || !nodeModulesSelection.isEmpty
+    }
+
     /// Number of selected categories — i.e. how many checkboxes the
     /// user ticked. Drives the footer's "N categories" label.
     var selectedCategoryCount: Int {
@@ -332,6 +355,32 @@ final class CleanViewModel: ObservableObject {
         nodeModulesEntries
             .filter { nodeModulesSelection.contains($0.url) }
             .reduce(0) { $0 + $1.totalBytes }
+    }
+
+    /// Run both scans concurrently — categories + node_modules. Used by
+    /// the unified Scan button so the user gets one progress affordance.
+    func scanAll() async {
+        async let a: () = scan()
+        async let b: () = scanNodeModules()
+        _ = await (a, b)
+    }
+
+    /// Apply both selections — categories + node_modules. Computes the
+    /// combined preview banner totals up-front so we can override the
+    /// per-method banners with one summary at the end.
+    func applyAll() async {
+        let hasCategories = selectedItemCount > 0
+        let hasNodeModules = !nodeModulesSelection.isEmpty
+        guard hasCategories || hasNodeModules else { return }
+
+        let totalItems = combinedSelectedItemCount
+        let totalBytes = combinedSelectedBytes
+
+        if hasCategories { await apply() }
+        if hasNodeModules { await trashSelectedNodeModules() }
+
+        previewBanner = PreviewSummary(items: totalItems, bytes: totalBytes)
+        if dryRun { scheduleBannerDismiss() }
     }
 
     /// Walk `~/` looking for node_modules directories. Long-running on

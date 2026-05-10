@@ -11,8 +11,8 @@ struct CleanHeader: View {
                 Text("Clean")
                     .font(.titleL)
                     .foregroundStyle(Color.fgPrimary)
-                if vm.totalReclaimable > 0 {
-                    Text("Found \(vm.totalReclaimable, format: .byteCount(style: .file)) reclaimable")
+                if vm.combinedReclaimable > 0 {
+                    Text("Found \(vm.combinedReclaimable, format: .byteCount(style: .file)) reclaimable")
                         .font(.bodyS)
                         .foregroundStyle(Color.fgSecondary)
                 }
@@ -39,10 +39,10 @@ struct CleanHeader: View {
                 BurrowToggle(isOn: $vm.dryRun)
             }
 
-            PrimaryButton(vm.isScanning ? "Scanning…" : "Scan", isLoading: vm.isScanning) {
-                Task { await vm.scan() }
+            PrimaryButton(vm.isScanningAny ? "Scanning…" : "Scan", isLoading: vm.isScanningAny) {
+                Task { await vm.scanAll() }
             }
-            .disabled(vm.isScanning || vm.categories.isEmpty)
+            .disabled(vm.isScanningAny || vm.categories.isEmpty)
         }
         .padding(.horizontal, Spacing.xl)
         .padding(.vertical, Spacing.lg)

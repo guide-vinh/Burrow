@@ -20,17 +20,10 @@ struct NodeModulesSection: View {
         HStack(alignment: .center, spacing: Spacing.md) {
             SectionLabel(text: "Project caches (node_modules)")
             Spacer(minLength: Spacing.sm)
-            sortMenu
-            OutlineButton(scanButtonTitle) {
-                Task { await vm.scanNodeModules() }
+            if !vm.nodeModulesEntries.isEmpty {
+                sortMenu
             }
-            .disabled(vm.isScanningNodeModules)
         }
-    }
-
-    private var scanButtonTitle: String {
-        if vm.isScanningNodeModules { return "Scanning…" }
-        return vm.nodeModulesEntries.isEmpty ? "Scan ~/" : "Rescan"
     }
 
     private var sortMenu: some View {
@@ -79,7 +72,6 @@ struct NodeModulesSection: View {
                         Divider().background(Color.borderSubtle)
                     }
                 }
-                cardFooter
             }
             .cardStyle()
         }
@@ -103,38 +95,13 @@ struct NodeModulesSection: View {
         HStack(spacing: Spacing.sm) {
             Image(systemName: "shippingbox")
                 .foregroundStyle(Color.fgMuted)
-            Text("No node_modules scanned yet. Click \"Scan ~/\" to find them.")
+            Text("No node_modules scanned yet. Click Scan above to find them.")
                 .font(.bodyS)
                 .foregroundStyle(Color.fgSecondary)
             Spacer(minLength: 0)
         }
         .padding(Spacing.md)
         .cardStyle()
-    }
-
-    private var cardFooter: some View {
-        HStack(spacing: Spacing.md) {
-            Text(summaryLine)
-                .font(.bodyS)
-                .foregroundStyle(Color.fgSecondary)
-            Spacer(minLength: Spacing.sm)
-            DestructiveButton("Move selected to Trash", icon: "trash") {
-                Task { await vm.trashSelectedNodeModules() }
-            }
-            .disabled(vm.nodeModulesSelection.isEmpty)
-        }
-        .padding(.horizontal, Spacing.md)
-        .padding(.vertical, Spacing.sm + 2)
-        .background(Color.surfaceTertiary.opacity(0.6))
-    }
-
-    private var summaryLine: String {
-        let total = vm.nodeModulesEntries.count
-        let selected = vm.nodeModulesSelection.count
-        if selected == 0 {
-            return "\(total) project\(total == 1 ? "" : "s")"
-        }
-        return "\(selected) of \(total) selected · \(format(bytes: vm.nodeModulesSelectedBytes))"
     }
 
     // MARK: - Helpers
@@ -151,12 +118,6 @@ struct NodeModulesSection: View {
 
     private func reveal(_ url: URL) {
         NSWorkspace.shared.activateFileViewerSelecting([url])
-    }
-
-    private func format(bytes: Int64) -> String {
-        let f = ByteCountFormatter()
-        f.countStyle = .file
-        return f.string(fromByteCount: bytes)
     }
 }
 
@@ -177,19 +138,19 @@ private struct NodeModulesRow: View {
                 .frame(width: 20, height: 20)
 
             VStack(alignment: .leading, spacing: 1) {
-                Text(entry.parentName)
+                Text("\(entry.parentName)/node_modules")
                     .font(.bodyM)
                     .foregroundStyle(Color.fgPrimary)
                     .lineLimit(1)
                     .truncationMode(.tail)
-                Text(entry.parentURL.path)
+                Text(entry.url.path)
                     .font(.captionS)
                     .foregroundStyle(Color.fgMuted)
                     .lineLimit(1)
                     .truncationMode(.middle)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .tooltip("\(entry.parentName)\n\(entry.parentURL.path)")
+            .tooltip("\(entry.parentName)/node_modules\n\(entry.url.path)")
 
             VStack(alignment: .trailing, spacing: 1) {
                 Text("project: \(relative(entry.parentMtime))")
