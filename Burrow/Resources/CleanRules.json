@@ -149,8 +149,8 @@
     },
     {
       "id": "developer.fvm_versions",
-      "title": "fvm cached SDKs",
-      "summary": "Flutter SDKs cached by fvm; each version is large and re-downloads slowly",
+      "title": "fvm versions",
+      "summary": "Flutter SDK versions cached by fvm; each version is large and re-downloads slowly",
       "group": "developer",
       "icon": "shippingbox",
       "risk": "medium",
