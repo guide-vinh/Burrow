@@ -22,7 +22,7 @@ struct CleanHeader: View {
 
             HStack(spacing: Spacing.sm) {
                 BurrowCheckbox(isOn: Binding(
-                    get: { vm.allCategoriesSelected },
+                    get: { vm.allItemsSelected },
                     set: { _ in vm.toggleSelectAll() }
                 ))
                 Text("Select all")
@@ -30,7 +30,7 @@ struct CleanHeader: View {
                     .foregroundStyle(Color.fgSecondary)
                     .onTapGesture { vm.toggleSelectAll() }
             }
-            .disabled(vm.categories.isEmpty)
+            .disabled(vm.categories.isEmpty && vm.nodeModulesEntries.isEmpty && vm.flutterProjects.isEmpty)
 
             HStack(spacing: Spacing.sm) {
                 Text("Dry run")

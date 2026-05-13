@@ -7,11 +7,6 @@ import SwiftUI
 struct CleanView: View {
     @ObservedObject var vm: CleanViewModel
 
-    private let columns = [
-        GridItem(.flexible(), spacing: Spacing.xl, alignment: .top),
-        GridItem(.flexible(), spacing: Spacing.xl, alignment: .top),
-    ]
-
     var body: some View {
         VStack(spacing: 0) {
             CleanHeader(vm: vm)
@@ -27,9 +22,12 @@ struct CleanView: View {
             }
 
             ScrollView {
-                VStack(alignment: .leading, spacing: Spacing.xl) {
-                    LazyVGrid(columns: columns, alignment: .leading, spacing: Spacing.xl) {
-                        ForEach(vm.categoriesByGroup, id: \.group) { entry in
+                // Manual two-column layout (replaces LazyVGrid) so the
+                // project caches sections can sit under the short right
+                // column instead of below the long developer list.
+                HStack(alignment: .top, spacing: Spacing.xl) {
+                    VStack(alignment: .leading, spacing: Spacing.xl) {
+                        ForEach(leftColumn, id: \.group) { entry in
                             CategoryGroupSection(
                                 group: entry.group,
                                 categories: entry.categories,
@@ -37,8 +35,20 @@ struct CleanView: View {
                             )
                         }
                     }
-                    NodeModulesSection(vm: vm)
-                    FlutterProjectSection(vm: vm)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                    VStack(alignment: .leading, spacing: Spacing.xl) {
+                        ForEach(rightColumn, id: \.group) { entry in
+                            CategoryGroupSection(
+                                group: entry.group,
+                                categories: entry.categories,
+                                vm: vm
+                            )
+                        }
+                        NodeModulesSection(vm: vm)
+                        FlutterProjectSection(vm: vm)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .padding(Spacing.xl)
             }
@@ -49,6 +59,24 @@ struct CleanView: View {
         }
         .background(Color.surfacePrimary)
         .task { await vm.loadCatalog() }
+    }
+
+    /// Even-indexed groups in `categoriesByGroup` — preserves the prior
+    /// row-major LazyVGrid mapping so existing groups stay where users
+    /// expect them.
+    private var leftColumn: [(group: CategoryGroup, categories: [CleanCategory])] {
+        vm.categoriesByGroup.enumerated().compactMap { idx, entry in
+            idx % 2 == 0 ? entry : nil
+        }
+    }
+
+    /// Odd-indexed groups — the project caches sections are appended
+    /// after these so they sit directly below the (typically short)
+    /// SYSTEM JUNK card for visibility.
+    private var rightColumn: [(group: CategoryGroup, categories: [CleanCategory])] {
+        vm.categoriesByGroup.enumerated().compactMap { idx, entry in
+            idx % 2 == 1 ? entry : nil
+        }
     }
 
     /// Reveal the operations log in Finder so the user can open it

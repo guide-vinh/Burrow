@@ -27,7 +27,7 @@ struct RootView: View {
             detail
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(minWidth: 980, minHeight: 640)
+        .frame(minWidth: 1200, minHeight: 720)
         .task { await refreshFDAState() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             Task { await refreshFDAState() }
@@ -139,6 +139,11 @@ struct RootView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.surfacePrimary)
     }
+}
+
+#Preview("Root — full app") {
+    RootView()
+        .frame(width: 1200, height: 720)
 }
 
 /// Sidebar destinations. Order here is the order shown in the sidebar.

@@ -21,16 +21,6 @@ struct FlutterProjectSection: View {
             SectionLabel(text: "Flutter projects (.dart_tool + build)")
             Spacer(minLength: Spacing.sm)
             if !vm.flutterProjects.isEmpty {
-                HStack(spacing: Spacing.sm) {
-                    BurrowCheckbox(isOn: Binding(
-                        get: { vm.allFlutterProjectsSelected },
-                        set: { _ in vm.toggleSelectAllFlutterProjects() }
-                    ))
-                    Text("Select all")
-                        .font(.bodyS)
-                        .foregroundStyle(Color.fgSecondary)
-                        .onTapGesture { vm.toggleSelectAllFlutterProjects() }
-                }
                 sortMenu
             }
         }
@@ -51,14 +41,12 @@ struct FlutterProjectSection: View {
                 }
             }
         } label: {
-            HStack(spacing: 4) {
-                Text("Sort: \(vm.flutterSort.label)")
-                Image(systemName: "chevron.down")
-            }
-            .font(.bodyS)
-            .foregroundStyle(Color.fgSecondary)
+            Text("Sort: \(vm.flutterSort.label)")
+                .font(.bodyS)
+                .foregroundStyle(Color.fgSecondary)
         }
         .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
         .fixedSize()
     }
 

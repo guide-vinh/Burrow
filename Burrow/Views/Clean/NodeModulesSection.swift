@@ -21,16 +21,6 @@ struct NodeModulesSection: View {
             SectionLabel(text: "Project caches (node_modules)")
             Spacer(minLength: Spacing.sm)
             if !vm.nodeModulesEntries.isEmpty {
-                HStack(spacing: Spacing.sm) {
-                    BurrowCheckbox(isOn: Binding(
-                        get: { vm.allNodeModulesSelected },
-                        set: { _ in vm.toggleSelectAllNodeModules() }
-                    ))
-                    Text("Select all")
-                        .font(.bodyS)
-                        .foregroundStyle(Color.fgSecondary)
-                        .onTapGesture { vm.toggleSelectAllNodeModules() }
-                }
                 sortMenu
             }
         }
@@ -51,14 +41,12 @@ struct NodeModulesSection: View {
                 }
             }
         } label: {
-            HStack(spacing: 4) {
-                Text("Sort: \(vm.nodeModulesSort.label)")
-                Image(systemName: "chevron.down")
-            }
-            .font(.bodyS)
-            .foregroundStyle(Color.fgSecondary)
+            Text("Sort: \(vm.nodeModulesSort.label)")
+                .font(.bodyS)
+                .foregroundStyle(Color.fgSecondary)
         }
         .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
         .fixedSize()
     }
 

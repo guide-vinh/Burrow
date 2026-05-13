@@ -308,47 +308,35 @@ final class CleanViewModel: ObservableObject {
         logger.warning("revealInFinder: no resolvable path for \(category.id, privacy: .public)")
     }
 
-    /// True iff every loaded category is selected. Drives the
-    /// "Select all" header checkbox.
-    var allCategoriesSelected: Bool {
-        !categories.isEmpty && selectedCategoryIds.count == categories.count
+    /// True iff every non-empty list (categories + node_modules + Flutter)
+    /// is fully selected. Drives the global "Select all" header checkbox.
+    var allItemsSelected: Bool {
+        var hasAny = false
+        if !categories.isEmpty {
+            hasAny = true
+            if selectedCategoryIds.count != categories.count { return false }
+        }
+        if !nodeModulesEntries.isEmpty {
+            hasAny = true
+            if nodeModulesSelection.count != nodeModulesEntries.count { return false }
+        }
+        if !flutterProjects.isEmpty {
+            hasAny = true
+            if flutterSelection.count != flutterProjects.count { return false }
+        }
+        return hasAny
     }
 
-    /// Toggle every category on (any → all) or off (all → none).
+    /// Toggle every item across all three lists on (any → all) or off
+    /// (all → none). Empty lists are no-ops.
     func toggleSelectAll() {
-        if allCategoriesSelected {
+        if allItemsSelected {
             selectedCategoryIds = []
-        } else {
-            selectedCategoryIds = Set(categories.map(\.id))
-        }
-    }
-
-    /// True iff every scanned node_modules entry is selected.
-    var allNodeModulesSelected: Bool {
-        !nodeModulesEntries.isEmpty
-            && nodeModulesSelection.count == nodeModulesEntries.count
-    }
-
-    /// Toggle every node_modules entry on (any → all) or off (all → none).
-    func toggleSelectAllNodeModules() {
-        if allNodeModulesSelected {
             nodeModulesSelection = []
-        } else {
-            nodeModulesSelection = Set(nodeModulesEntries.map(\.url))
-        }
-    }
-
-    /// True iff every scanned Flutter project is selected.
-    var allFlutterProjectsSelected: Bool {
-        !flutterProjects.isEmpty
-            && flutterSelection.count == flutterProjects.count
-    }
-
-    /// Toggle every Flutter project on (any → all) or off (all → none).
-    func toggleSelectAllFlutterProjects() {
-        if allFlutterProjectsSelected {
             flutterSelection = []
         } else {
+            selectedCategoryIds = Set(categories.map(\.id))
+            nodeModulesSelection = Set(nodeModulesEntries.map(\.url))
             flutterSelection = Set(flutterProjects.map(\.projectURL))
         }
     }
