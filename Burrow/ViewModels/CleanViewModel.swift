@@ -30,6 +30,12 @@ final class CleanViewModel: ObservableObject {
     @Published private(set) var isScanningNodeModules: Bool = false
     @Published var nodeModulesSort: NodeModulesSort = .parentMtime
 
+    // Flutter section
+    @Published private(set) var flutterProjects: [FlutterProjectEntry] = []
+    @Published var flutterSelection: Set<URL> = []  // keyed by projectURL
+    @Published private(set) var isScanningFlutterProjects: Bool = false
+    @Published var flutterSort: FlutterSort = .pubspecMtime
+
     // MARK: - Dependencies
 
     private var engine: RuleEngine?
@@ -236,27 +242,34 @@ final class CleanViewModel: ObservableObject {
         scanResults.values.reduce(0) { $0 + $1.totalBytes }
     }
 
-    /// True iff either category scan or node_modules scan is in flight.
-    var isScanningAny: Bool { isScanning || isScanningNodeModules }
+    /// True iff any of the three scans is in flight.
+    var isScanningAny: Bool {
+        isScanning || isScanningNodeModules || isScanningFlutterProjects
+    }
 
-    /// Categories + node_modules combined item count for the footer label.
+    /// Combined item count for the footer label — categories + project caches.
     var combinedSelectedItemCount: Int {
-        selectedItemCount + nodeModulesSelection.count
+        selectedItemCount + nodeModulesSelection.count + flutterSelection.count
     }
 
-    /// Categories + node_modules combined byte total for the footer label.
+    /// Combined byte total for the footer label.
     var combinedSelectedBytes: Int64 {
-        selectedTotalBytes + nodeModulesSelectedBytes
+        selectedTotalBytes + nodeModulesSelectedBytes + flutterSelectedBytes
     }
 
-    /// Combined reclaimable across both lists — drives the header subtitle.
+    /// Combined reclaimable across all lists — drives the header subtitle.
     var combinedReclaimable: Int64 {
-        totalReclaimable + nodeModulesEntries.reduce(0) { $0 + $1.totalBytes }
+        totalReclaimable
+            + nodeModulesEntries.reduce(0) { $0 + $1.totalBytes }
+            + flutterProjects.reduce(0) { $0 + $1.totalBytes }
     }
 
-    /// True iff there's at least one selected category OR node_modules entry.
+    /// True iff there's at least one selection across categories, node_modules,
+    /// or Flutter projects.
     var hasAnySelection: Bool {
-        selectedItemCount > 0 || !nodeModulesSelection.isEmpty
+        selectedItemCount > 0
+            || !nodeModulesSelection.isEmpty
+            || !flutterSelection.isEmpty
     }
 
     /// Number of selected categories — i.e. how many checkboxes the
@@ -310,6 +323,36 @@ final class CleanViewModel: ObservableObject {
         }
     }
 
+    /// True iff every scanned node_modules entry is selected.
+    var allNodeModulesSelected: Bool {
+        !nodeModulesEntries.isEmpty
+            && nodeModulesSelection.count == nodeModulesEntries.count
+    }
+
+    /// Toggle every node_modules entry on (any → all) or off (all → none).
+    func toggleSelectAllNodeModules() {
+        if allNodeModulesSelected {
+            nodeModulesSelection = []
+        } else {
+            nodeModulesSelection = Set(nodeModulesEntries.map(\.url))
+        }
+    }
+
+    /// True iff every scanned Flutter project is selected.
+    var allFlutterProjectsSelected: Bool {
+        !flutterProjects.isEmpty
+            && flutterSelection.count == flutterProjects.count
+    }
+
+    /// Toggle every Flutter project on (any → all) or off (all → none).
+    func toggleSelectAllFlutterProjects() {
+        if allFlutterProjectsSelected {
+            flutterSelection = []
+        } else {
+            flutterSelection = Set(flutterProjects.map(\.projectURL))
+        }
+    }
+
     /// Categories grouped by `CategoryGroup`, sorted alphabetically by
     /// the group's raw value for stable UI ordering.
     var categoriesByGroup: [(group: CategoryGroup, categories: [CleanCategory])] {
@@ -357,27 +400,31 @@ final class CleanViewModel: ObservableObject {
             .reduce(0) { $0 + $1.totalBytes }
     }
 
-    /// Run both scans concurrently — categories + node_modules. Used by
-    /// the unified Scan button so the user gets one progress affordance.
+    /// Run every scan concurrently — categories + node_modules + Flutter.
+    /// Used by the unified Scan button so the user gets one progress
+    /// affordance instead of three.
     func scanAll() async {
         async let a: () = scan()
         async let b: () = scanNodeModules()
-        _ = await (a, b)
+        async let c: () = scanFlutterProjects()
+        _ = await (a, b, c)
     }
 
-    /// Apply both selections — categories + node_modules. Computes the
-    /// combined preview banner totals up-front so we can override the
+    /// Apply every selection — categories + node_modules + Flutter caches.
+    /// Computes combined banner totals up-front so we can override the
     /// per-method banners with one summary at the end.
     func applyAll() async {
         let hasCategories = selectedItemCount > 0
         let hasNodeModules = !nodeModulesSelection.isEmpty
-        guard hasCategories || hasNodeModules else { return }
+        let hasFlutter = !flutterSelection.isEmpty
+        guard hasCategories || hasNodeModules || hasFlutter else { return }
 
         let totalItems = combinedSelectedItemCount
         let totalBytes = combinedSelectedBytes
 
         if hasCategories { await apply() }
         if hasNodeModules { await trashSelectedNodeModules() }
+        if hasFlutter { await trashSelectedFlutterProjects() }
 
         previewBanner = PreviewSummary(items: totalItems, bytes: totalBytes)
         if dryRun { scheduleBannerDismiss() }
@@ -429,6 +476,100 @@ final class CleanViewModel: ObservableObject {
         if !dryRun {
             nodeModulesEntries.removeAll { removed.contains($0.url) }
             nodeModulesSelection.subtract(removed)
+        }
+        previewBanner = PreviewSummary(items: removed.count, bytes: bytesReclaimed)
+    }
+
+    // MARK: - Flutter projects
+
+    /// Sort key for the Flutter projects list.
+    enum FlutterSort: String, CaseIterable, Identifiable {
+        case pubspecMtime  // last project edit (pubspec.yaml mtime)
+        case cacheMtime  // newer of .dart_tool / build mtimes
+        case size  // descending size
+
+        var id: String { rawValue }
+        var label: String {
+            switch self {
+            case .pubspecMtime: return "Project last edited"
+            case .cacheMtime:   return "Caches last touched"
+            case .size:         return "Size"
+            }
+        }
+    }
+
+    /// Entries sorted per `flutterSort`. View binds to this so the list
+    /// re-orders without re-scanning.
+    var sortedFlutterProjects: [FlutterProjectEntry] {
+        switch flutterSort {
+        case .pubspecMtime:
+            return flutterProjects.sorted { $0.pubspecMtime < $1.pubspecMtime }
+        case .cacheMtime:
+            return flutterProjects.sorted { $0.lastTouchedMtime < $1.lastTouchedMtime }
+        case .size:
+            return flutterProjects.sorted { $0.totalBytes > $1.totalBytes }
+        }
+    }
+
+    /// Total bytes across currently-selected Flutter projects.
+    var flutterSelectedBytes: Int64 {
+        flutterProjects
+            .filter { flutterSelection.contains($0.projectURL) }
+            .reduce(0) { $0 + $1.totalBytes }
+    }
+
+    /// Walk `~/` looking for pubspec.yaml files. Long-running on large
+    /// home dirs; toggles `isScanningFlutterProjects` for the duration.
+    func scanFlutterProjects() async {
+        isScanningFlutterProjects = true
+        defer { isScanningFlutterProjects = false }
+
+        let scanner = FlutterProjectScanner()
+        let entries = await scanner.scanHomeDirectory()
+        flutterProjects = entries
+        // Drop any prior selections that no longer exist on disk.
+        flutterSelection.formIntersection(Set(entries.map(\.projectURL)))
+
+        logger.info("Flutter scan: \(entries.count, privacy: .public) projects")
+    }
+
+    /// Trash `.dart_tool` and `build` for every selected Flutter project.
+    /// Honors `dryRun`. A project is removed from the list only if every
+    /// cache it owns trashed successfully.
+    func trashSelectedFlutterProjects() async {
+        guard !flutterSelection.isEmpty else { return }
+
+        let targets = flutterProjects.filter { flutterSelection.contains($0.projectURL) }
+        var removed: Set<URL> = []
+        var bytesReclaimed: Int64 = 0
+
+        for entry in targets {
+            let caches = [entry.dartToolURL, entry.buildURL].compactMap { $0 }
+            var allOK = true
+            for cacheURL in caches {
+                do {
+                    let bytes = try await SafeFileOps.trash(cacheURL, dryRun: dryRun)
+                    bytesReclaimed += bytes
+                    try? await log.append(OperationLogEntry(
+                        timestamp: Date(),
+                        action: .trash,
+                        target: cacheURL.path,
+                        bytes: bytes,
+                        dryRun: dryRun
+                    ))
+                } catch {
+                    allOK = false
+                    logger.error(
+                        "trash failed for \(cacheURL.path, privacy: .public): \(error.localizedDescription, privacy: .public)"
+                    )
+                }
+            }
+            if allOK { removed.insert(entry.projectURL) }
+        }
+
+        if !dryRun {
+            flutterProjects.removeAll { removed.contains($0.projectURL) }
+            flutterSelection.subtract(removed)
         }
         previewBanner = PreviewSummary(items: removed.count, bytes: bytesReclaimed)
     }

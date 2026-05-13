@@ -8,7 +8,7 @@ struct CleanFooter: View {
 
     var body: some View {
         HStack(spacing: Spacing.md) {
-            if !vm.scanResults.isEmpty || !vm.nodeModulesEntries.isEmpty {
+            if !vm.scanResults.isEmpty || !vm.nodeModulesEntries.isEmpty || !vm.flutterProjects.isEmpty {
                 Text(selectionSummary)
                     .font(.bodyS)
                     .foregroundStyle(Color.fgSecondary)
@@ -31,6 +31,7 @@ struct CleanFooter: View {
     private var selectionSummary: String {
         let cats = vm.selectedCategoryCount
         let nm = vm.nodeModulesSelection.count
+        let fl = vm.flutterSelection.count
         let paths = vm.combinedSelectedItemCount
         let bytes = vm.combinedSelectedBytes
             .formatted(.byteCount(style: .file))
@@ -41,6 +42,9 @@ struct CleanFooter: View {
         }
         if nm > 0 {
             parts.append("\(nm) node_modules")
+        }
+        if fl > 0 {
+            parts.append("\(fl) Flutter")
         }
         let pathWord = paths == 1 ? "path" : "paths"
         parts.append("\(paths) \(pathWord)")

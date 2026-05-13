@@ -1,10 +1,10 @@
 import AppKit
 import SwiftUI
 
-/// One section card listing every `node_modules` directory under `~/`.
-/// Discovered lazily via `vm.scanNodeModules()` (long-running on large
-/// home dirs) and rendered as a sortable list with per-row checkboxes.
-struct NodeModulesSection: View {
+/// One section card listing every Flutter/Dart project under `~/`,
+/// surfaced for cleaning its `.dart_tool` + `build` caches. Discovered
+/// alongside node_modules via the unified Scan button on the header.
+struct FlutterProjectSection: View {
     @ObservedObject var vm: CleanViewModel
 
     var body: some View {
@@ -18,18 +18,18 @@ struct NodeModulesSection: View {
 
     private var header: some View {
         HStack(alignment: .center, spacing: Spacing.md) {
-            SectionLabel(text: "Project caches (node_modules)")
+            SectionLabel(text: "Flutter projects (.dart_tool + build)")
             Spacer(minLength: Spacing.sm)
-            if !vm.nodeModulesEntries.isEmpty {
+            if !vm.flutterProjects.isEmpty {
                 HStack(spacing: Spacing.sm) {
                     BurrowCheckbox(isOn: Binding(
-                        get: { vm.allNodeModulesSelected },
-                        set: { _ in vm.toggleSelectAllNodeModules() }
+                        get: { vm.allFlutterProjectsSelected },
+                        set: { _ in vm.toggleSelectAllFlutterProjects() }
                     ))
                     Text("Select all")
                         .font(.bodyS)
                         .foregroundStyle(Color.fgSecondary)
-                        .onTapGesture { vm.toggleSelectAllNodeModules() }
+                        .onTapGesture { vm.toggleSelectAllFlutterProjects() }
                 }
                 sortMenu
             }
@@ -38,13 +38,13 @@ struct NodeModulesSection: View {
 
     private var sortMenu: some View {
         Menu {
-            ForEach(CleanViewModel.NodeModulesSort.allCases) { option in
+            ForEach(CleanViewModel.FlutterSort.allCases) { option in
                 Button {
-                    vm.nodeModulesSort = option
+                    vm.flutterSort = option
                 } label: {
                     HStack {
                         Text(option.label)
-                        if vm.nodeModulesSort == option {
+                        if vm.flutterSort == option {
                             Image(systemName: "checkmark")
                         }
                     }
@@ -52,7 +52,7 @@ struct NodeModulesSection: View {
             }
         } label: {
             HStack(spacing: 4) {
-                Text("Sort: \(vm.nodeModulesSort.label)")
+                Text("Sort: \(vm.flutterSort.label)")
                 Image(systemName: "chevron.down")
             }
             .font(.bodyS)
@@ -66,19 +66,19 @@ struct NodeModulesSection: View {
 
     @ViewBuilder
     private var card: some View {
-        if vm.isScanningNodeModules && vm.nodeModulesEntries.isEmpty {
+        if vm.isScanningFlutterProjects && vm.flutterProjects.isEmpty {
             scanningPlaceholder
-        } else if vm.nodeModulesEntries.isEmpty {
+        } else if vm.flutterProjects.isEmpty {
             emptyPlaceholder
         } else {
             VStack(spacing: 0) {
-                ForEach(vm.sortedNodeModules) { entry in
-                    NodeModulesRow(
+                ForEach(vm.sortedFlutterProjects) { entry in
+                    FlutterProjectRow(
                         entry: entry,
-                        isSelected: binding(for: entry.url),
-                        onReveal: { reveal(entry.url) }
+                        isSelected: binding(for: entry.projectURL),
+                        onReveal: { reveal(entry.projectURL) }
                     )
-                    if entry.url != vm.sortedNodeModules.last?.url {
+                    if entry.projectURL != vm.sortedFlutterProjects.last?.projectURL {
                         Divider().background(Color.borderSubtle)
                     }
                 }
@@ -92,7 +92,7 @@ struct NodeModulesSection: View {
             ProgressView()
                 .progressViewStyle(.circular)
                 .controlSize(.small)
-            Text("Walking ~/ — this can take a minute on a big home dir.")
+            Text("Looking for pubspec.yaml files under ~/ …")
                 .font(.bodyS)
                 .foregroundStyle(Color.fgSecondary)
             Spacer(minLength: 0)
@@ -103,9 +103,9 @@ struct NodeModulesSection: View {
 
     private var emptyPlaceholder: some View {
         HStack(spacing: Spacing.sm) {
-            Image(systemName: "shippingbox")
+            Image(systemName: "hammer")
                 .foregroundStyle(Color.fgMuted)
-            Text("No node_modules scanned yet. Click Scan above to find them.")
+            Text("No Flutter projects scanned yet. Click Scan above to find them.")
                 .font(.bodyS)
                 .foregroundStyle(Color.fgSecondary)
             Spacer(minLength: 0)
@@ -118,10 +118,10 @@ struct NodeModulesSection: View {
 
     private func binding(for url: URL) -> Binding<Bool> {
         Binding(
-            get: { vm.nodeModulesSelection.contains(url) },
+            get: { vm.flutterSelection.contains(url) },
             set: { isOn in
-                if isOn { vm.nodeModulesSelection.insert(url) }
-                else    { vm.nodeModulesSelection.remove(url) }
+                if isOn { vm.flutterSelection.insert(url) }
+                else    { vm.flutterSelection.remove(url) }
             }
         )
     }
@@ -133,8 +133,8 @@ struct NodeModulesSection: View {
 
 // MARK: - Row
 
-private struct NodeModulesRow: View {
-    let entry: NodeModulesEntry
+private struct FlutterProjectRow: View {
+    let entry: FlutterProjectEntry
     @Binding var isSelected: Bool
     let onReveal: () -> Void
 
@@ -142,29 +142,29 @@ private struct NodeModulesRow: View {
         HStack(spacing: Spacing.md) {
             BurrowCheckbox(isOn: $isSelected)
 
-            Image(systemName: "shippingbox")
+            Image(systemName: "hammer")
                 .font(.system(size: 14))
                 .foregroundStyle(Color.fgSecondary)
                 .frame(width: 20, height: 20)
 
             VStack(alignment: .leading, spacing: 1) {
-                Text("\(entry.parentName)/node_modules")
+                Text("\(entry.projectName) · \(entry.cacheTypesLabel)")
                     .font(.bodyM)
                     .foregroundStyle(Color.fgPrimary)
                     .lineLimit(1)
                     .truncationMode(.tail)
-                Text(entry.url.path)
+                Text(entry.projectURL.path)
                     .font(.captionS)
                     .foregroundStyle(Color.fgMuted)
                     .lineLimit(1)
                     .truncationMode(.middle)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .tooltip("\(entry.parentName)/node_modules\n\(entry.url.path)")
+            .tooltip("\(entry.projectName) · \(entry.cacheTypesLabel)\n\(entry.projectURL.path)")
 
             VStack(alignment: .trailing, spacing: 1) {
-                Text("project: \(relative(entry.parentMtime))")
-                Text("nm: \(relative(entry.nodeModulesMtime))")
+                Text("project: \(relative(entry.pubspecMtime))")
+                Text("cache: \(relative(entry.lastTouchedMtime))")
             }
             .font(.captionS)
             .foregroundStyle(Color.fgMuted)
@@ -188,8 +188,6 @@ private struct NodeModulesRow: View {
         .padding(.vertical, Spacing.sm)
     }
 
-    /// Coarse "N days ago" / "N weeks ago" formatting; we don't need
-    /// minute precision for project mtimes.
     private func relative(_ date: Date) -> String {
         let f = RelativeDateTimeFormatter()
         f.unitsStyle = .short

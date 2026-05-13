@@ -38,6 +38,7 @@ struct CleanView: View {
                         }
                     }
                     NodeModulesSection(vm: vm)
+                    FlutterProjectSection(vm: vm)
                 }
                 .padding(Spacing.xl)
             }
