@@ -14,6 +14,10 @@ private let logger = Logger(subsystem: "fun.burrow", category: "NodeModulesScann
 ///     into nested transitive deps — they're counted via `size(url:)`)
 actor NodeModulesScanner {
 
+    /// Entries smaller than this aren't worth surfacing — usually
+    /// half-installed or stub directories that just add list noise.
+    private static let minimumDisplayBytes: Int64 = 10 * 1024 * 1024  // 10 MB
+
     /// Standard scan: starts from `~/`. Bounded by `maxDepth` so a
     /// pathological symlink loop can't burn forever.
     func scanHomeDirectory(maxDepth: Int = 8) async -> [NodeModulesEntry] {
@@ -97,6 +101,7 @@ actor NodeModulesScanner {
         if parentMtime == .distantPast { parentMtime = nmMtime }
 
         let bytes = recursiveSize(nodeModules)
+        guard bytes >= Self.minimumDisplayBytes else { return nil }
         return NodeModulesEntry(
             url: nodeModules,
             parentURL: parent,

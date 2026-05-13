@@ -15,6 +15,11 @@ private let logger = Logger(subsystem: "fun.burrow", category: "FlutterProjectSc
 ///   - descendants of any project we find (Flutter projects don't nest)
 actor FlutterProjectScanner {
 
+    /// Projects whose combined cache size is below this aren't worth
+    /// surfacing — typically untouched scaffolds that won't reclaim
+    /// meaningful space.
+    private static let minimumDisplayBytes: Int64 = 10 * 1024 * 1024  // 10 MB
+
     /// Standard scan: starts from `~/`. Bounded by `maxDepth` so a
     /// pathological symlink loop can't burn forever.
     func scanHomeDirectory(maxDepth: Int = 8) async -> [FlutterProjectEntry] {
@@ -91,6 +96,10 @@ actor FlutterProjectScanner {
 
         // Skip projects with no reclaimable caches — nothing to clean.
         if dartTool.url == nil && build.url == nil { return nil }
+
+        // Skip projects whose combined cache is too small to bother with.
+        let combined = dartTool.bytes + build.bytes
+        guard combined >= Self.minimumDisplayBytes else { return nil }
 
         return FlutterProjectEntry(
             projectURL: projectDir,

@@ -139,50 +139,59 @@ private struct NodeModulesRow: View {
     let onReveal: () -> Void
 
     var body: some View {
-        HStack(spacing: Spacing.md) {
+        HStack(alignment: .top, spacing: Spacing.md) {
             BurrowCheckbox(isOn: $isSelected)
+                .padding(.top, 2)
 
             Image(systemName: "shippingbox")
                 .font(.system(size: 14))
                 .foregroundStyle(Color.fgSecondary)
                 .frame(width: 20, height: 20)
+                .padding(.top, 1)
 
-            VStack(alignment: .leading, spacing: 1) {
-                Text("\(entry.parentName)/node_modules")
-                    .font(.bodyM)
-                    .foregroundStyle(Color.fgPrimary)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                Text(entry.url.path)
-                    .font(.captionS)
-                    .foregroundStyle(Color.fgMuted)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+            VStack(alignment: .leading, spacing: 3) {
+                // Line 1 — title, size, info action
+                HStack(spacing: Spacing.sm) {
+                    Text("\(entry.parentName)/node_modules")
+                        .font(.bodyM)
+                        .foregroundStyle(Color.fgPrimary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                    Spacer(minLength: Spacing.sm)
+                    Text(entry.totalBytes, format: .byteCount(style: .file))
+                        .font(.bodyS)
+                        .foregroundStyle(Color.fgSecondary)
+                        .monospacedDigit()
+                    Button(action: onReveal) {
+                        Image(systemName: "info.circle")
+                            .font(.system(size: 13))
+                            .foregroundStyle(Color.fgMuted)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Show in Finder")
+                }
+
+                // Line 2 — path + mtimes as muted metadata strip
+                HStack(spacing: 6) {
+                    Text(entry.url.path)
+                        .font(.captionS)
+                        .foregroundStyle(Color.fgMuted)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Text("·").font(.captionS).foregroundStyle(Color.fgMuted)
+                    Text("project \(relative(entry.parentMtime))")
+                        .font(.captionS)
+                        .foregroundStyle(Color.fgMuted)
+                        .fixedSize()
+                    Text("·").font(.captionS).foregroundStyle(Color.fgMuted)
+                    Text("nm \(relative(entry.nodeModulesMtime))")
+                        .font(.captionS)
+                        .foregroundStyle(Color.fgMuted)
+                        .fixedSize()
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .tooltip("\(entry.parentName)/node_modules\n\(entry.url.path)")
-
-            VStack(alignment: .trailing, spacing: 1) {
-                Text("project: \(relative(entry.parentMtime))")
-                Text("nm: \(relative(entry.nodeModulesMtime))")
-            }
-            .font(.captionS)
-            .foregroundStyle(Color.fgMuted)
-            .frame(width: 130, alignment: .trailing)
-
-            Text(entry.totalBytes, format: .byteCount(style: .file))
-                .font(.bodyS)
-                .foregroundStyle(Color.fgSecondary)
-                .frame(minWidth: 70, alignment: .trailing)
-                .monospacedDigit()
-
-            Button(action: onReveal) {
-                Image(systemName: "info.circle")
-                    .font(.system(size: 13))
-                    .foregroundStyle(Color.fgMuted)
-            }
-            .buttonStyle(.plain)
-            .help("Show in Finder")
         }
         .padding(.horizontal, Spacing.md)
         .padding(.vertical, Spacing.sm)
