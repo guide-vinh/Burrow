@@ -40,4 +40,13 @@ final class UpdaterController: ObservableObject {
     func checkForUpdates() {
         controller.checkForUpdates(nil)
     }
+
+    /// Silent launch-time probe. Sparkle only surfaces UI if a new
+    /// version is found; otherwise it's a no-op. Skipped when the user
+    /// has turned off auto-update in Settings so the toggle remains a
+    /// proper kill switch.
+    func checkOnLaunch() {
+        guard controller.updater.automaticallyChecksForUpdates else { return }
+        controller.updater.checkForUpdatesInBackground()
+    }
 }
