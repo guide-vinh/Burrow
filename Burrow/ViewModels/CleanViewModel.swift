@@ -36,6 +36,12 @@ final class CleanViewModel: ObservableObject {
     @Published private(set) var isScanningFlutterProjects: Bool = false
     @Published var flutterSort: FlutterSort = .pubspecMtime
 
+    // Docker section (IRREVERSIBLE — runs `docker … prune`, never trash)
+    @Published private(set) var dockerCacheEntries: [DockerCacheEntry] = []
+    @Published var dockerSelection: Set<DockerCacheEntry.Kind> = []
+    @Published private(set) var isScanningDockerCache: Bool = false
+    @Published private(set) var isPruningDocker: Bool = false
+
     // MARK: - Dependencies
 
     private var engine: RuleEngine?
@@ -154,8 +160,12 @@ final class CleanViewModel: ObservableObject {
     /// Trashes (or dry-runs) every ScanResult belonging to a selected
     /// category. Per-category errors are recorded in `lastError` and
     /// the loop continues — one bad category never aborts the batch.
-    /// On a successful real (non-dry) apply, `scanResults` is cleared
-    /// because the on-disk state is now stale.
+    /// On a successful real (non-dry) apply, removes ONLY the
+    /// categories that were actually applied from `scanResults` and
+    /// `selectedCategoryIds`. (Previously this wiped the entire
+    /// scan dict, which made the header "Found N reclaimable" total
+    /// jump to zero after a partial cleanup — users had to re-scan
+    /// just to see what was still on disk.)
     func apply() async {
         guard let engine else {
             lastError = "Catalog not loaded"
@@ -169,6 +179,7 @@ final class CleanViewModel: ObservableObject {
         var encounteredError = false
         var totalBytes: Int64 = 0
         var totalItems = 0
+        var appliedIds: Set<String> = []
 
         for id in selectedCategoryIds {
             guard let result = scanResults[id] else { continue }
@@ -177,6 +188,7 @@ final class CleanViewModel: ObservableObject {
                 let bytes = try await engine.apply(result, dryRun: dryRun)
                 totalBytes += bytes
                 totalItems += result.items.count
+                appliedIds.insert(id)
                 logger.info(
                     "Apply succeeded for \(id, privacy: .public) (dryRun=\(self.dryRun, privacy: .public))"
                 )
@@ -190,10 +202,15 @@ final class CleanViewModel: ObservableObject {
         }
 
         if !dryRun && !encounteredError {
-            scanResults = [:]
-            selectedCategoryIds = []
+            // Drop only the categories we actually emptied; leave the
+            // rest of the scan visible so the header still shows the
+            // remaining reclaimable total.
+            for id in appliedIds {
+                scanResults.removeValue(forKey: id)
+            }
+            selectedCategoryIds.subtract(appliedIds)
             dismissPreviewBanner()
-            logger.info("Real apply completed cleanly; scan results and selection cleared")
+            logger.info("Real apply completed cleanly; \(appliedIds.count, privacy: .public) categories cleared")
         } else if dryRun && !encounteredError {
             previewBanner = PreviewSummary(items: totalItems, bytes: totalBytes)
             scheduleBannerDismiss()
@@ -242,9 +259,13 @@ final class CleanViewModel: ObservableObject {
         scanResults.values.reduce(0) { $0 + $1.totalBytes }
     }
 
-    /// True iff any of the three scans is in flight.
+    /// True iff any scan (categories + node_modules + Flutter + Docker)
+    /// is in flight. Drives the unified header Scan button's spinner.
     var isScanningAny: Bool {
-        isScanning || isScanningNodeModules || isScanningFlutterProjects
+        isScanning
+            || isScanningNodeModules
+            || isScanningFlutterProjects
+            || isScanningDockerCache
     }
 
     /// Combined item count for the footer label — categories + project caches.
@@ -257,11 +278,15 @@ final class CleanViewModel: ObservableObject {
         selectedTotalBytes + nodeModulesSelectedBytes + flutterSelectedBytes
     }
 
-    /// Combined reclaimable across all lists — drives the header subtitle.
+    /// Combined reclaimable across all lists — drives the header
+    /// subtitle. Includes Docker's reclaimable purely as an informational
+    /// total; Docker is NOT part of the trash footer (see
+    /// `pruneSelectedDocker`).
     var combinedReclaimable: Int64 {
         totalReclaimable
             + nodeModulesEntries.reduce(0) { $0 + $1.totalBytes }
             + flutterProjects.reduce(0) { $0 + $1.totalBytes }
+            + dockerCacheEntries.reduce(0) { $0 + $1.reclaimableBytes }
     }
 
     /// True iff there's at least one selection across categories, node_modules,
@@ -388,14 +413,15 @@ final class CleanViewModel: ObservableObject {
             .reduce(0) { $0 + $1.totalBytes }
     }
 
-    /// Run every scan concurrently — categories + node_modules + Flutter.
-    /// Used by the unified Scan button so the user gets one progress
-    /// affordance instead of three.
+    /// Run every scan concurrently — categories + node_modules +
+    /// Flutter + Docker. Used by the unified Scan button so the user
+    /// gets one progress affordance instead of four.
     func scanAll() async {
         async let a: () = scan()
         async let b: () = scanNodeModules()
         async let c: () = scanFlutterProjects()
-        _ = await (a, b, c)
+        async let d: () = scanDockerCache()
+        _ = await (a, b, c, d)
     }
 
     /// Apply every selection — categories + node_modules + Flutter caches.
@@ -560,5 +586,95 @@ final class CleanViewModel: ObservableObject {
             flutterSelection.subtract(removed)
         }
         previewBanner = PreviewSummary(items: removed.count, bytes: bytesReclaimed)
+    }
+
+    // MARK: - Docker cache (IRREVERSIBLE — separate from the trash flow)
+    //
+    // `docker … prune` deletes immediately and cannot be restored from
+    // the Trash, so Docker selections are *deliberately* excluded from
+    // `applyAll`, `hasAnySelection`, `toggleSelectAll`, and the footer
+    // totals. The DockerCacheSection card hosts its own Reclaim button
+    // and confirmation dialog. Only `combinedReclaimable` (informational
+    // header total) and `isScanningAny` (unified Scan spinner) include it.
+
+    /// Sum of reclaimable bytes across currently-selected Docker kinds.
+    /// Drives the in-card "Reclaim N MB" button label.
+    var dockerSelectedBytes: Int64 {
+        dockerCacheEntries
+            .filter { dockerSelection.contains($0.kind) }
+            .reduce(0) { $0 + $1.reclaimableBytes }
+    }
+
+    /// Asks the Docker daemon what's reclaimable via the CLI scanner.
+    /// On the FIRST populated scan, pre-ticks the safe defaults
+    /// (`Kind.defaultEnabled`); on subsequent scans, preserves the
+    /// user's selection and only drops kinds that vanished. Safe no-op
+    /// if Docker isn't installed or the daemon is down — the scanner
+    /// returns `[]`.
+    func scanDockerCache() async {
+        let isFirstPopulatedScan = dockerCacheEntries.isEmpty
+
+        isScanningDockerCache = true
+        defer { isScanningDockerCache = false }
+
+        let scanner = DockerCacheScanner()
+        let entries = await scanner.scan()
+        dockerCacheEntries = entries
+
+        let present = Set(entries.map(\.kind))
+        if isFirstPopulatedScan {
+            dockerSelection = Set(
+                entries.filter { $0.kind.defaultEnabled }.map(\.kind)
+            )
+        } else {
+            dockerSelection.formIntersection(present)
+        }
+
+        logger.info("Docker scan: \(entries.count, privacy: .public) reclaimable classes")
+    }
+
+    /// Run `docker … prune` for every selected kind. IRREVERSIBLE —
+    /// callers (i.e. `DockerCacheSection`) must confirm with the user
+    /// first when `dryRun == false`. In dry-run mode nothing runs, but
+    /// a preview banner still reports the would-reclaim total and audit
+    /// entries are appended with `dryRun: true`.
+    func pruneSelectedDocker() async {
+        guard !dockerSelection.isEmpty else { return }
+
+        let targets = dockerCacheEntries.filter { dockerSelection.contains($0.kind) }
+
+        isPruningDocker = true
+        defer { isPruningDocker = false }
+
+        let succeeded: Set<DockerCacheEntry.Kind>
+        if dryRun {
+            // Pretend every selection succeeded — used only for the
+            // preview banner and audit log; nothing is pruned.
+            succeeded = Set(targets.map(\.kind))
+        } else {
+            let scanner = DockerCacheScanner()
+            succeeded = await scanner.prune(targets.map(\.kind))
+        }
+
+        var bytesReclaimed: Int64 = 0
+        for entry in targets where succeeded.contains(entry.kind) {
+            bytesReclaimed += entry.reclaimableBytes
+            let argv = entry.kind.pruneArguments.joined(separator: " ")
+            try? await log.append(OperationLogEntry(
+                timestamp: Date(),
+                action: .exec,
+                target: "docker \(argv)",
+                bytes: entry.reclaimableBytes,
+                dryRun: dryRun
+            ))
+        }
+
+        if !dryRun {
+            dockerCacheEntries.removeAll { succeeded.contains($0.kind) }
+            dockerSelection.subtract(succeeded)
+        }
+
+        previewBanner = PreviewSummary(items: succeeded.count, bytes: bytesReclaimed)
+        if dryRun { scheduleBannerDismiss() }
     }
 }

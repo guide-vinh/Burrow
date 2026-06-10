@@ -47,6 +47,7 @@ struct CleanView: View {
                         }
                         NodeModulesSection(vm: vm)
                         FlutterProjectSection(vm: vm)
+                        DockerCacheSection(vm: vm)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
