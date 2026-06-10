@@ -11,7 +11,7 @@
 #   - notarytool keychain profile `burrow-notarize`
 #   - Sparkle EdDSA private key in keychain
 #   - `gh` authenticated for guide-vinh/Burrow
-#   - sign_update binary findable (default: Sparkle CocoaPods cache)
+#   - sign_update binary findable (default: SPM artifacts; see SPARKLE_TOOLS)
 
 set -euo pipefail
 
@@ -32,8 +32,11 @@ SIGNING_IDENTITY="Developer ID Application: Nha Nguyen Trong (${TEAM_ID})"
 APPCAST_LOCAL="scripts/appcast.xml"
 INFO_PLIST="Burrow/Info.plist"
 
-# Sparkle's bin tools — adjust if you keep them elsewhere.
-SPARKLE_TOOLS="${SPARKLE_TOOLS:-${HOME}/Library/Caches/CocoaPods/Pods/Release/Sparkle/2.9.1-a4115/bin}"
+# Sparkle's bin tools — adjust if you keep them elsewhere. Defaults to the
+# SPM artifact location populated by `make build`; if you build directly
+# in Xcode, point this at ~/Library/Developer/Xcode/DerivedData/Burrow-*/
+# SourcePackages/artifacts/sparkle/Sparkle/bin.
+SPARKLE_TOOLS="${SPARKLE_TOOLS:-build/SourcePackages/artifacts/sparkle/Sparkle/bin}"
 
 step() { printf "\n\033[1;36m==> %s\033[0m\n" "$*"; }
 
