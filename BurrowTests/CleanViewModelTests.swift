@@ -307,21 +307,21 @@ final class CleanViewModelTests: XCTestCase {
     func testAllCategoriesSelectedReflectsSelection() {
         let vm = CleanViewModel(catalog: syntheticCatalog(), log: freshLog())
         // Default: defaultEnabled=true so all are selected.
-        XCTAssertTrue(vm.allCategoriesSelected)
+        XCTAssertTrue(vm.allItemsSelected)
 
         vm.selectedCategoryIds = []
-        XCTAssertFalse(vm.allCategoriesSelected)
+        XCTAssertFalse(vm.allItemsSelected)
     }
 
     func testToggleSelectAllFlipsBetweenAllAndNone() {
         let vm = CleanViewModel(catalog: syntheticCatalog(), log: freshLog())
-        XCTAssertTrue(vm.allCategoriesSelected, "starts with all selected")
+        XCTAssertTrue(vm.allItemsSelected, "starts with all selected")
 
         vm.toggleSelectAll()
         XCTAssertTrue(vm.selectedCategoryIds.isEmpty, "first toggle clears")
 
         vm.toggleSelectAll()
-        XCTAssertTrue(vm.allCategoriesSelected, "second toggle re-selects all")
+        XCTAssertTrue(vm.allItemsSelected, "second toggle re-selects all")
     }
 
     func testToggleSelectAllFromPartialSelectionSelectsAll() {
@@ -333,7 +333,7 @@ final class CleanViewModelTests: XCTestCase {
         let vm = CleanViewModel(catalog: CleanCatalog(schemaVersion: 1, categories: [a, b]), log: freshLog())
 
         vm.selectedCategoryIds = ["a"]   // partial
-        XCTAssertFalse(vm.allCategoriesSelected)
+        XCTAssertFalse(vm.allItemsSelected)
 
         vm.toggleSelectAll()
         XCTAssertEqual(vm.selectedCategoryIds, ["a", "b"], "partial → all")
