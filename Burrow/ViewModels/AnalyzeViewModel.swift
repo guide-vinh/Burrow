@@ -5,169 +5,211 @@ import os
 
 private let logger = Logger(subsystem: "fun.burrow", category: "AnalyzeViewModel")
 
-/// Drives the Analyze tab. Runs a recursive disk scan, exposes a
-/// navigable treemap view, surfaces insights (largest + oldest), and
-/// routes all deletions through `SafeFileOps`. Pure data; views map
-/// data → visuals.
+/// Drives the Analyze tab. Sizes the home folder with the system `du` tool,
+/// one top-level folder at a time in parallel, and streams results in live:
+/// a whole-volume storage breakdown (donut + legend) and a list of the
+/// largest folders. Folders drill down on demand. All deletions route
+/// through `SafeFileOps`. Pure data; views map data → visuals.
 @MainActor
 final class AnalyzeViewModel: ObservableObject {
+
+    // MARK: - Sort
+
+    enum FolderSort: String, CaseIterable, Identifiable {
+        case bySize
+        case byName
+
+        var id: String { rawValue }
+        var label: String {
+            switch self {
+            case .bySize: return "By size"
+            case .byName: return "By name"
+            }
+        }
+    }
 
     // MARK: - Scan state
 
     @Published private(set) var isScanning: Bool = false
-    @Published private(set) var scanProgress: ScanProgress?
     @Published private(set) var scanError: String?
+    @Published private(set) var foldersScanned: Int = 0
+    @Published private(set) var totalTopLevel: Int = 0
 
-    // MARK: - Current view state
+    // MARK: - Results
 
-    @Published private(set) var currentRoot: URL?
-    @Published private(set) var breadcrumb: [URL] = []
-    @Published private(set) var visibleEntries: [DiskEntry] = []
+    @Published private(set) var storage: StorageBreakdown?
+    @Published private(set) var largestFolders: [DiskEntry] = []
+    @Published var sortOrder: FolderSort = .bySize
 
-    // MARK: - Insights
+    /// Largest subfolders per folder URL (top-level pre-filled during the scan,
+    /// deeper levels loaded lazily on expand).
+    @Published private(set) var childrenCache: [URL: [DiskEntry]] = [:]
+    @Published private(set) var loadingChildren: Set<URL> = []
 
-    @Published private(set) var topLargest: [DiskEntry] = []
-    @Published private(set) var oldestNeverOpened: [DiskEntry] = []
-    @Published private(set) var atimeAvailable: Bool = true
+    /// True once a breakdown exists — the view's "scanned" state.
+    var hasResults: Bool { storage != nil }
+
+    var displayedFolders: [DiskEntry] {
+        switch sortOrder {
+        case .bySize:
+            return largestFolders
+        case .byName:
+            return largestFolders.sorted {
+                $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+            }
+        }
+    }
+
+    var maxFolderSize: Int64 { largestFolders.map(\.size).max() ?? 1 }
+
+    // MARK: - Tuning
+
+    private let maxLargestFolders = 8
+    private let maxChildren = 8
 
     // MARK: - Dependencies
 
-    private let startScan: (URL) -> AsyncThrowingStream<ScanProgress, Error>
-    private let loadChildren: (URL) async throws -> [DiskEntry]
+    private let capacity: @Sendable (URL) -> (total: Int64, free: Int64, name: String)?
+    private let topLevel: @Sendable (URL) -> (dirs: [URL], looseBytes: Int64)
+    private let scanFolder: @Sendable (URL) async -> DiskUsageScanner.FolderScan
+    private let applicationsSize: @Sendable () async -> Int64
     private let homeDirectory: URL
-
-    // MARK: - Private state
 
     private var scanTask: Task<Void, Never>?
 
     // MARK: - Init
 
-    /// Closure-injected for tests (mirrors UninstallViewModel pattern).
-    /// Production callers use the defaults.
+    /// Closure-injected for tests. Production callers use the defaults.
     init(
-        startScan: @escaping (URL) -> AsyncThrowingStream<ScanProgress, Error>
-            = { url in
-                // Bridge the actor-isolated DiskScanner.scan into a plain
-                // synchronous-returning AsyncThrowingStream by forwarding
-                // each yielded value through a wrapper stream.
-                AsyncThrowingStream { continuation in
-                    Task {
-                        do {
-                            for try await progress in DiskScanner.shared.scan(url) {
-                                continuation.yield(progress)
-                            }
-                            continuation.finish()
-                        } catch {
-                            continuation.finish(throwing: error)
-                        }
-                    }
+        capacity: @escaping @Sendable (URL) -> (total: Int64, free: Int64, name: String)?
+            = { VolumeInfo.capacity(of: $0) },
+        topLevel: @escaping @Sendable (URL) -> (dirs: [URL], looseBytes: Int64)
+            = { DiskUsageScanner.topLevel(of: $0) },
+        scanFolder: @escaping @Sendable (URL) async -> DiskUsageScanner.FolderScan
+            = { await DiskUsageScanner.scan($0) },
+        applicationsSize: @escaping @Sendable () async -> Int64
+            = {
+                let fm = FileManager.default
+                var total = await DiskUsageScanner.scan(URL(fileURLWithPath: "/Applications")).total
+                let userApps = fm.homeDirectoryForCurrentUser.appendingPathComponent("Applications")
+                if fm.fileExists(atPath: userApps.path) {
+                    total += await DiskUsageScanner.scan(userApps).total
                 }
+                return total
             },
-        loadChildren: @escaping (URL) async throws -> [DiskEntry]
-            = { url in try await DiskScanner.shared.childrenOf(url) },
         homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser
     ) {
-        self.startScan = startScan
-        self.loadChildren = loadChildren
+        self.capacity = capacity
+        self.topLevel = topLevel
+        self.scanFolder = scanFolder
+        self.applicationsSize = applicationsSize
         self.homeDirectory = homeDirectory
     }
 
-    // MARK: - Actions
+    // MARK: - Scan
 
-    /// Start a full recursive scan from `homeDirectory`.
+    /// Size every top-level folder in parallel with `du`, streaming the donut
+    /// and largest-folders list as each finishes.
     func scan() async {
         cancelScan()
 
         isScanning = true
         scanError = nil
+        largestFolders = []
+        childrenCache = [:]
+        loadingChildren = []
+        foldersScanned = 0
+
+        let home = homeDirectory
+        let scanFolder = self.scanFolder
+        let applicationsSize = self.applicationsSize
 
         scanTask = Task { [weak self] in
             guard let self else { return }
-            do {
-                let stream = self.startScan(self.homeDirectory)
-                for try await progress in stream {
-                    guard !Task.isCancelled else { break }
-                    self.scanProgress = progress
 
-                    if progress.phase == .finished {
-                        await self.loadAndDisplay(
-                            url: self.homeDirectory,
-                            appendBreadcrumb: false
-                        )
-                        self.isScanning = false
-                        logger.info(
-                            "Scan finished: \(progress.entriesScanned, privacy: .public) entries, \(progress.totalBytes, privacy: .public) bytes"
-                        )
-                        return
-                    }
+            let cap = self.capacity(home)
+            let (dirs, looseBytes) = self.topLevel(home)
+            self.totalTopLevel = dirs.count
 
-                    if progress.phase == .cancelled {
-                        self.isScanning = false
-                        logger.info("Scan cancelled")
-                        return
+            // Show the dashboard immediately (capacity known; folders fill in).
+            self.update(cap: cap, totals: [:], looseBytes: looseBytes, appsBytes: 0)
+
+            // /Applications sizing runs alongside the folder fan-out.
+            async let appsBytesTask = applicationsSize()
+
+            var totals: [URL: Int64] = [:]
+            let maxConcurrent = max(2, ProcessInfo.processInfo.activeProcessorCount - 1)
+
+            await withTaskGroup(of: (URL, DiskUsageScanner.FolderScan).self) { group in
+                var queue = dirs
+                for _ in 0..<min(maxConcurrent, queue.count) {
+                    let dir = queue.removeLast()
+                    group.addTask { (dir, await scanFolder(dir)) }
+                }
+
+                while let (dir, result) = await group.next() {
+                    if Task.isCancelled { group.cancelAll(); break }
+
+                    totals[dir] = result.total
+                    self.childrenCache[dir] = self.prepare(result.children)
+                    self.foldersScanned += 1
+                    self.largestFolders = self.topFolders(from: totals)
+                    self.update(cap: cap, totals: totals, looseBytes: looseBytes, appsBytes: 0)
+
+                    if let next = queue.popLast() {
+                        group.addTask { (next, await scanFolder(next)) }
                     }
                 }
-                // Stream exhausted without .finished / .cancelled — treat as done
+            }
+
+            let appsBytes = await appsBytesTask
+            if !Task.isCancelled {
+                self.update(cap: cap, totals: totals, looseBytes: looseBytes, appsBytes: appsBytes)
                 self.isScanning = false
-            } catch is CancellationError {
-                self.isScanning = false
-                logger.info("Scan task cancelled via CancellationError")
-            } catch {
-                self.scanError = error.localizedDescription
-                self.isScanning = false
-                logger.error("Scan error: \(error.localizedDescription, privacy: .public)")
+                logger.info("Scan finished: \(self.foldersScanned, privacy: .public) top-level folders")
             }
         }
 
         await scanTask?.value
     }
 
-    /// Cancel an in-flight scan. Safe to call even when not scanning.
     func cancelScan() {
         scanTask?.cancel()
         scanTask = nil
+        isScanning = false
     }
 
-    /// Navigate into a directory entry (zoom in one level).
-    func zoomInto(_ entry: DiskEntry) async {
-        guard entry.isDirectory else {
-            logger.debug("zoomInto called on non-directory \(entry.url.path, privacy: .private) — no-op")
-            return
-        }
-        await loadAndDisplay(url: entry.url, appendBreadcrumb: true)
+    // MARK: - Drill-down
+
+    func children(of entry: DiskEntry) -> [DiskEntry] {
+        childrenCache[entry.url] ?? []
     }
 
-    /// Navigate up one breadcrumb level.
-    func zoomOut() async {
-        guard breadcrumb.count > 1 else { return }
-        let parent = breadcrumb[breadcrumb.count - 2]
-        // Drop last from breadcrumb before navigating so loadAndDisplay
-        // doesn't double-append.
-        breadcrumb.removeLast()
-        await loadAndDisplay(url: parent, appendBreadcrumb: false)
+    func isLoadingChildren(_ entry: DiskEntry) -> Bool {
+        loadingChildren.contains(entry.url)
     }
 
-    /// Jump to a specific breadcrumb segment, dropping everything after it.
-    func navigate(to url: URL) async {
-        guard let idx = breadcrumb.firstIndex(of: url) else { return }
-        breadcrumb = Array(breadcrumb.prefix(idx + 1))
-        await loadAndDisplay(url: url, appendBreadcrumb: false)
+    /// Lazily `du` `entry`'s subfolders. No-op if already loaded or in flight.
+    /// Top-level folders are pre-loaded during the scan, so this only runs for
+    /// deeper levels.
+    func loadChildrenIfNeeded(_ entry: DiskEntry) async {
+        guard childrenCache[entry.url] == nil, !loadingChildren.contains(entry.url) else { return }
+        loadingChildren.insert(entry.url)
+        defer { loadingChildren.remove(entry.url) }
+        let result = await scanFolder(entry.url)
+        childrenCache[entry.url] = prepare(result.children)
     }
 
-    /// Open Finder with the entry selected.
+    // MARK: - Actions
+
     func revealInFinder(_ entry: DiskEntry) {
         NSWorkspace.shared.activateFileViewerSelecting([entry.url])
     }
 
-    /// Flush the persistent disk cache. Next scan starts cold.
-    /// In-memory state (visibleEntries, breadcrumb, insights) is NOT touched —
-    /// the user can keep navigating until they hit Rescan.
-    func resetCache() async {
-        await DiskCache.shared.flush()
-        logger.info("Disk cache flushed by user")
+    func openInFinder(_ entry: DiskEntry) {
+        NSWorkspace.shared.open(entry.url)
     }
 
-    /// Move a single entry to Trash through the SafeFileOps gate.
     func moveToTrash(_ entry: DiskEntry) async {
         do {
             let bytes = try await SafeFileOps.trash(entry.url, dryRun: false)
@@ -178,8 +220,8 @@ final class AnalyzeViewModel: ObservableObject {
                 bytes: bytes,
                 dryRun: false
             ))
-            visibleEntries.removeAll { $0.url == entry.url }
-            recomputeInsights()
+            largestFolders.removeAll { $0.url == entry.url }
+            childrenCache[entry.url] = nil
             logger.info(
                 "Trashed \(bytes, privacy: .public) bytes at \(entry.url.path, privacy: .private)"
             )
@@ -191,75 +233,88 @@ final class AnalyzeViewModel: ObservableObject {
         }
     }
 
-    // MARK: - Private helpers
+    // MARK: - Helpers
 
-    /// Load children of `url`, update state. If `appendBreadcrumb` is true,
-    /// push `url` onto `breadcrumb`; otherwise trust the caller already
-    /// adjusted `breadcrumb` (used by zoomOut / navigate).
-    private func loadAndDisplay(url: URL, appendBreadcrumb: Bool) async {
-        do {
-            let children = try await loadChildren(url)
-            currentRoot = url
-            if appendBreadcrumb {
-                breadcrumb.append(url)
-            } else if breadcrumb.last != url {
-                // After zoomOut / navigate sets breadcrumb, just sync currentRoot.
-                // If breadcrumb is completely empty (first scan), seed it.
-                if breadcrumb.isEmpty {
-                    breadcrumb = [url]
-                }
+    /// Recompute the storage breakdown from the totals gathered so far.
+    private func update(
+        cap: (total: Int64, free: Int64, name: String)?,
+        totals: [URL: Int64],
+        looseBytes: Int64,
+        appsBytes: Int64
+    ) {
+        let homeTotal = looseBytes + totals.values.reduce(0, +)
+        storage = Self.makeBreakdown(
+            totalBytes: cap?.total ?? 0,
+            freeBytes: cap?.free ?? 0,
+            volumeName: cap?.name ?? "Macintosh HD",
+            homeTotalBytes: homeTotal,
+            applicationsBytes: appsBytes,
+            documentsBytes: totals[homeDirectory.appendingPathComponent("Documents").standardizedFileURL] ?? 0,
+            photosBytes: totals[homeDirectory.appendingPathComponent("Pictures").standardizedFileURL] ?? 0
+        )
+    }
+
+    /// Top-level folders sorted largest first, capped for display.
+    private func topFolders(from totals: [URL: Int64]) -> [DiskEntry] {
+        totals
+            .filter { $0.value > 0 }
+            .sorted { $0.value > $1.value }
+            .prefix(maxLargestFolders)
+            .map { url, size in
+                DiskEntry(
+                    id: UUID(), url: url, parentURL: homeDirectory,
+                    name: url.lastPathComponent, size: size, isDirectory: true,
+                    modifiedAt: Date(), lastAccessedAt: nil, childCount: 0
+                )
             }
-            visibleEntries = truncateForDisplay(children)
-            recomputeInsights()
-            logger.info(
-                "Loaded \(children.count, privacy: .public) children for \(url.path, privacy: .private)"
-            )
-        } catch {
-            scanError = "Couldn't load directory: \(error.localizedDescription)"
-            logger.error(
-                "loadChildren failed for \(url.path, privacy: .private): \(error.localizedDescription, privacy: .public)"
-            )
-        }
     }
 
-    /// Top-100 truncation per DECISIONS §4.
-    private func truncateForDisplay(_ entries: [DiskEntry]) -> [DiskEntry] {
-        let sorted = entries.sorted { $0.size > $1.size }
-        if sorted.count <= 100 { return sorted }
-        // Return top 100 as-is. Synthetic "Other" entry deferred to Phase 3a.1.
-        return Array(sorted.prefix(100))
+    /// Directory children only, largest first, capped.
+    private func prepare(_ children: [DiskEntry]) -> [DiskEntry] {
+        children
+            .filter { $0.isDirectory && $0.size > 0 }
+            .sorted { $0.size > $1.size }
+            .prefix(maxChildren)
+            .map { $0 }
     }
 
-    /// Refresh `topLargest` and `oldestNeverOpened` from `visibleEntries`.
-    private func recomputeInsights() {
-        topLargest = Array(visibleEntries.sorted { $0.size > $1.size }.prefix(5))
-        computeAtimeInsights(visibleEntries)
-    }
+    /// Build the six-category breakdown. "System" is the remainder of used
+    /// space outside `/Applications` and the home folder. Every derived value
+    /// is clamped to ≥ 0:  apps + system + documents + photos + other + free.
+    static func makeBreakdown(
+        totalBytes: Int64,
+        freeBytes: Int64,
+        volumeName: String = "Macintosh HD",
+        homeTotalBytes: Int64,
+        applicationsBytes: Int64,
+        documentsBytes: Int64,
+        photosBytes: Int64
+    ) -> StorageBreakdown {
+        let total = max(0, totalBytes)
+        let free = min(max(0, freeBytes), total)
+        let used = max(0, total - free)
 
-    /// Populate `oldestNeverOpened` with graceful degradation when atime is
-    /// unavailable (DECISIONS §6).
-    private func computeAtimeInsights(_ entries: [DiskEntry]) {
-        let withAtime = entries.compactMap { e -> (DiskEntry, Date)? in
-            guard let a = e.lastAccessedAt else { return nil }
-            return (e, a)
-        }
+        let apps = max(0, applicationsBytes)
+        let homeTotal = max(0, homeTotalBytes)
+        let documents = max(0, documentsBytes)
+        let photos = max(0, photosBytes)
+        let otherHome = max(0, homeTotal - documents - photos)
+        let system = max(0, used - apps - homeTotal)
 
-        // If for ALL entries lastAccessedAt is nil OR equal-to-modifiedAt
-        // (within 1 second), conclude atime is disabled.
-        let atimeMatchesMtime = entries.allSatisfy { e in
-            guard let a = e.lastAccessedAt else { return true }
-            return abs(a.timeIntervalSince(e.modifiedAt)) <= 1.0
-        }
-
-        if entries.isEmpty == false && atimeMatchesMtime {
-            atimeAvailable = false
-            oldestNeverOpened = []
-            return
-        }
-
-        atimeAvailable = true
-        oldestNeverOpened = Array(
-            withAtime.sorted { $0.1 < $1.1 }.prefix(5).map(\.0)
+        let categories: [StorageCategory] = [
+            StorageCategory(kind: .applications, bytes: apps),
+            StorageCategory(kind: .system, bytes: system),
+            StorageCategory(kind: .documents, bytes: documents),
+            StorageCategory(kind: .photos, bytes: photos),
+            StorageCategory(kind: .other, bytes: otherHome),
+            StorageCategory(kind: .free, bytes: free),
+        ]
+        return StorageBreakdown(
+            totalBytes: total,
+            usedBytes: used,
+            freeBytes: free,
+            volumeName: volumeName,
+            categories: categories
         )
     }
 }

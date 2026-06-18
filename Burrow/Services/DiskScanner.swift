@@ -458,6 +458,15 @@ actor DiskScanner {
         let excludedPrefixes: [String] = [
             home + "/Library/CloudStorage",
             home + "/Library/Mobile Documents",
+            // System-managed folders with millions of tiny files. Descending
+            // into them dominates scan time but they aren't user-actionable,
+            // so we skip them. (~/Library/Caches is intentionally NOT here —
+            // caches are something users want to see and clean.)
+            home + "/Library/Containers",
+            home + "/Library/Group Containers",
+            home + "/Library/Daemon Containers",
+            home + "/Library/Developer/CoreSimulator",
+            home + "/Library/Developer/Xcode/iOS DeviceSupport",
             home + "/.Trash",
             "/System",
             "/private",

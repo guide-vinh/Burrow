@@ -17,6 +17,7 @@ struct RootView: View {
     // view's @StateObject and wipes the user's scan / selection.
     @StateObject private var cleanVM = CleanViewModel()
     @StateObject private var uninstallVM = UninstallViewModel()
+    @StateObject private var analyzeVM = AnalyzeViewModel()
 
     var body: some View {
         HStack(spacing: 0) {
@@ -124,7 +125,7 @@ struct RootView: View {
         switch selection {
         case .clean:     CleanView(vm: cleanVM)
         case .uninstall: UninstallView(vm: uninstallVM)
-        case .analyze:   placeholder(for: .analyze)
+        case .analyze:   AnalyzeView(vm: analyzeVM)
         case .status:    placeholder(for: .status)
         }
     }

@@ -303,7 +303,19 @@ final class DiskScannerTests: XCTestCase {
         XCTAssertTrue(DiskScanner.isExcludedPath("/private", home: home))
         XCTAssertTrue(DiskScanner.isExcludedPath("/Volumes", home: home))
 
+        // Heavy system-managed folders (skipped for scan speed)
+        XCTAssertTrue(DiskScanner.isExcludedPath(home + "/Library/Containers", home: home))
+        XCTAssertTrue(DiskScanner.isExcludedPath(home + "/Library/Containers/com.apple.x/Data", home: home))
+        XCTAssertTrue(DiskScanner.isExcludedPath(home + "/Library/Group Containers", home: home))
+        XCTAssertTrue(DiskScanner.isExcludedPath(home + "/Library/Daemon Containers", home: home))
+        XCTAssertTrue(DiskScanner.isExcludedPath(home + "/Library/Developer/CoreSimulator", home: home))
+        XCTAssertTrue(DiskScanner.isExcludedPath(home + "/Library/Developer/Xcode/iOS DeviceSupport", home: home))
+
         // Allowed paths
+        XCTAssertFalse(DiskScanner.isExcludedPath(
+            home + "/Library/Developer/Xcode/DerivedData",
+            home: home
+        ))
         XCTAssertFalse(DiskScanner.isExcludedPath(
             home + "/Documents",
             home: home

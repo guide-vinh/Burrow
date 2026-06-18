@@ -101,53 +101,31 @@ final class AnalyzePipelineTests: XCTestCase {
         }
     }
 
-    // MARK: - Insights
+    // MARK: - Largest folders (real `du` end-to-end)
 
-    func testTopLargestMatchesFixtureOrdering() async throws {
-        // Pump the same fixture through AnalyzeViewModel using closure injection.
-        let scanner = DiskScanner()
-        let vm = await AnalyzeViewModel(
-            startScan: { url in
-                AsyncThrowingStream { continuation in
-                    Task {
-                        do {
-                            for try await p in await scanner.scan(url) {
-                                continuation.yield(p)
-                            }
-                            continuation.finish()
-                        } catch {
-                            continuation.finish(throwing: error)
-                        }
-                    }
-                }
-            },
-            loadChildren: { url in try await scanner.childrenOf(url) },
-            homeDirectory: fixture
-        )
-
+    func testLargestFoldersViaDu() async throws {
+        // Run the real du-backed AnalyzeViewModel over the fixture as "home".
+        let vm = await AnalyzeViewModel(homeDirectory: fixture)
         await vm.scan()
 
-        let topLargest = await vm.topLargest
-        XCTAssertGreaterThan(topLargest.count, 0,
-                             "topLargest should be populated after a successful scan")
+        let folders = await vm.largestFolders
+        XCTAssertGreaterThan(folders.count, 0,
+                             "largestFolders should be populated after a successful scan")
+        XCTAssertTrue(folders.allSatisfy(\.isDirectory), "only folders")
 
-        // dirE has the highest size multiplier (256 × (1+2+4+8) = 3840 KiB),
-        // followed by dirD (960), dirC (240), dirB (60), dirA (15).
-        // The ordering is deterministic; the absolute sizes will be slightly
-        // larger than these because directory metadata costs a few bytes.
-        XCTAssertEqual(topLargest.first?.name, "dirE",
-                       "Largest immediate child must be dirE (largest fixture multiplier)")
-        if topLargest.count >= 2 {
-            XCTAssertEqual(topLargest[1].name, "dirD",
-                           "Second-largest must be dirD")
+        // dirE has the highest size multiplier (256 × (1+2+4+8)), so it's the
+        // largest top-level folder; dirD is next.
+        XCTAssertEqual(folders.first?.name, "dirE",
+                       "Largest folder must be dirE (largest fixture multiplier)")
+        if folders.count >= 2 {
+            XCTAssertEqual(folders[1].name, "dirD", "Second-largest must be dirD")
         }
 
-        // visibleEntries must be sorted descending by size (top-100 truncation).
-        let visible = await vm.visibleEntries
-        for i in 0..<(visible.count - 1) {
+        // largestFolders must be sorted descending by size.
+        for i in 0..<(folders.count - 1) {
             XCTAssertGreaterThanOrEqual(
-                visible[i].size, visible[i + 1].size,
-                "visibleEntries must be sorted descending by size"
+                folders[i].size, folders[i + 1].size,
+                "largestFolders must be sorted descending by size"
             )
         }
     }
