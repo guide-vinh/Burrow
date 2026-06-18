@@ -31,7 +31,7 @@ struct StorageCard: View {
 
             VStack(spacing: Spacing.xs - 1) {
                 Text(breakdown.humanUsed)
-                    .font(.system(size: 28, weight: .semibold, design: .rounded))
+                    .font(.system(size: 22, weight: .semibold, design: .rounded))
                     .foregroundStyle(Color.fgPrimary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.6)
