@@ -363,6 +363,570 @@
       "rules": [
         { "kind": "directoryContents", "path": "~/Library/Caches/com.apple.QuickLook.thumbnailcache" }
       ]
+    },
+    {
+      "id": "developer.bun_cache",
+      "title": "Bun cache",
+      "summary": "Bun install cache; re-downloaded on next install",
+      "group": "developer",
+      "icon": "package",
+      "risk": "low",
+      "defaultEnabled": true,
+      "rules": [
+        { "kind": "directoryContents", "path": "~/.bun/install/cache" }
+      ]
+    },
+    {
+      "id": "developer.corepack_cache",
+      "title": "Corepack cache",
+      "summary": "Corepack package-manager download cache",
+      "group": "developer",
+      "icon": "package",
+      "risk": "low",
+      "defaultEnabled": true,
+      "rules": [
+        { "kind": "directoryContents", "path": "~/.cache/node/corepack" }
+      ]
+    },
+    {
+      "id": "developer.deno_cache",
+      "title": "Deno cache",
+      "summary": "Deno dependency cache; re-downloaded on next run",
+      "group": "developer",
+      "icon": "package",
+      "risk": "low",
+      "defaultEnabled": true,
+      "rules": [
+        { "kind": "directoryContents", "path": "~/Library/Caches/deno" }
+      ]
+    },
+    {
+      "id": "developer.node_gyp_cache",
+      "title": "node-gyp cache",
+      "summary": "Native addon build headers cache",
+      "group": "developer",
+      "icon": "hammer",
+      "risk": "low",
+      "defaultEnabled": true,
+      "rules": [
+        { "kind": "directoryContents", "path": "~/.node-gyp" },
+        { "kind": "directoryContents", "path": "~/.cache/node-gyp" }
+      ]
+    },
+    {
+      "id": "developer.turbo_cache",
+      "title": "Turborepo cache",
+      "summary": "Turborepo task cache",
+      "group": "developer",
+      "icon": "hammer",
+      "risk": "low",
+      "defaultEnabled": true,
+      "rules": [
+        { "kind": "directoryContents", "path": "~/.turbo/cache" }
+      ]
+    },
+    {
+      "id": "developer.vite_cache",
+      "title": "Vite cache",
+      "summary": "Vite dev/build cache",
+      "group": "developer",
+      "icon": "hammer",
+      "risk": "low",
+      "defaultEnabled": true,
+      "rules": [
+        { "kind": "directoryContents", "path": "~/.cache/vite" }
+      ]
+    },
+    {
+      "id": "developer.webpack_cache",
+      "title": "Webpack cache",
+      "summary": "Webpack persistent build cache",
+      "group": "developer",
+      "icon": "hammer",
+      "risk": "low",
+      "defaultEnabled": true,
+      "rules": [
+        { "kind": "directoryContents", "path": "~/.cache/webpack" }
+      ]
+    },
+    {
+      "id": "developer.eslint_cache",
+      "title": "ESLint cache",
+      "summary": "ESLint results cache",
+      "group": "developer",
+      "icon": "hammer",
+      "risk": "low",
+      "defaultEnabled": true,
+      "rules": [
+        { "kind": "directoryContents", "path": "~/.cache/eslint" }
+      ]
+    },
+    {
+      "id": "developer.prettier_cache",
+      "title": "Prettier cache",
+      "summary": "Prettier formatting cache",
+      "group": "developer",
+      "icon": "hammer",
+      "risk": "low",
+      "defaultEnabled": true,
+      "rules": [
+        { "kind": "directoryContents", "path": "~/.cache/prettier" }
+      ]
+    },
+    {
+      "id": "developer.typescript_cache",
+      "title": "TypeScript cache",
+      "summary": "TypeScript incremental build cache",
+      "group": "developer",
+      "icon": "hammer",
+      "risk": "low",
+      "defaultEnabled": true,
+      "rules": [
+        { "kind": "directoryContents", "path": "~/.cache/typescript" }
+      ]
+    },
+    {
+      "id": "developer.electron_cache",
+      "title": "Electron cache",
+      "summary": "Electron binary download cache",
+      "group": "developer",
+      "icon": "package",
+      "risk": "low",
+      "defaultEnabled": true,
+      "rules": [
+        { "kind": "directoryContents", "path": "~/.cache/electron" }
+      ]
+    },
+    {
+      "id": "developer.pyenv_cache",
+      "title": "pyenv cache",
+      "summary": "Python version download cache",
+      "group": "developer",
+      "icon": "package",
+      "risk": "low",
+      "defaultEnabled": true,
+      "rules": [
+        { "kind": "directoryContents", "path": "~/.pyenv/cache" }
+      ]
+    },
+    {
+      "id": "developer.poetry_cache",
+      "title": "Poetry cache",
+      "summary": "Poetry package cache; re-downloaded on next install",
+      "group": "developer",
+      "icon": "package",
+      "risk": "low",
+      "defaultEnabled": true,
+      "rules": [
+        { "kind": "directoryContents", "path": "~/.cache/poetry" }
+      ]
+    },
+    {
+      "id": "developer.uv_cache",
+      "title": "uv cache",
+      "summary": "uv Python package cache",
+      "group": "developer",
+      "icon": "package",
+      "risk": "low",
+      "defaultEnabled": true,
+      "rules": [
+        { "kind": "directoryContents", "path": "~/.cache/uv" }
+      ]
+    },
+    {
+      "id": "developer.ruff_cache",
+      "title": "Ruff cache",
+      "summary": "Ruff linter cache",
+      "group": "developer",
+      "icon": "hammer",
+      "risk": "low",
+      "defaultEnabled": true,
+      "rules": [
+        { "kind": "directoryContents", "path": "~/.cache/ruff" }
+      ]
+    },
+    {
+      "id": "developer.mypy_cache",
+      "title": "MyPy cache",
+      "summary": "MyPy type-check cache",
+      "group": "developer",
+      "icon": "hammer",
+      "risk": "low",
+      "defaultEnabled": true,
+      "rules": [
+        { "kind": "directoryContents", "path": "~/.cache/mypy" }
+      ]
+    },
+    {
+      "id": "developer.jupyter_runtime",
+      "title": "Jupyter runtime",
+      "summary": "Runtime files for stopped Jupyter kernels",
+      "group": "developer",
+      "icon": "code",
+      "risk": "low",
+      "defaultEnabled": true,
+      "rules": [
+        { "kind": "directoryContents", "path": "~/.jupyter/runtime" }
+      ]
+    },
+    {
+      "id": "developer.go_build_cache",
+      "title": "Go build cache",
+      "summary": "Go compiler build cache; rebuilt on next build",
+      "group": "developer",
+      "icon": "hammer",
+      "risk": "low",
+      "defaultEnabled": true,
+      "rules": [
+        { "kind": "directoryContents", "path": "~/Library/Caches/go-build" }
+      ]
+    },
+    {
+      "id": "developer.rustup_downloads",
+      "title": "rustup downloads",
+      "summary": "Rust toolchain download cache",
+      "group": "developer",
+      "icon": "package",
+      "risk": "low",
+      "defaultEnabled": true,
+      "rules": [
+        { "kind": "directoryContents", "path": "~/.rustup/downloads" }
+      ]
+    },
+    {
+      "id": "developer.rbenv_cache",
+      "title": "rbenv cache",
+      "summary": "Ruby version download cache",
+      "group": "developer",
+      "icon": "package",
+      "risk": "low",
+      "defaultEnabled": true,
+      "rules": [
+        { "kind": "directoryContents", "path": "~/.rbenv/cache" }
+      ]
+    },
+    {
+      "id": "developer.swiftpm_cache",
+      "title": "Swift Package Manager cache",
+      "summary": "SwiftPM dependency cache; re-downloaded on next resolve",
+      "group": "developer",
+      "icon": "package",
+      "risk": "low",
+      "defaultEnabled": true,
+      "rules": [
+        { "kind": "directoryContents", "path": "~/Library/Caches/org.swift.swiftpm" },
+        { "kind": "directoryContents", "path": "~/.cache/swift-package-manager" }
+      ]
+    },
+    {
+      "id": "developer.mise_cache",
+      "title": "mise cache",
+      "summary": "mise tool-version download cache",
+      "group": "developer",
+      "icon": "package",
+      "risk": "low",
+      "defaultEnabled": true,
+      "rules": [
+        { "kind": "directoryContents", "path": "~/Library/Caches/mise" }
+      ]
+    },
+    {
+      "id": "developer.zig_cache",
+      "title": "Zig cache",
+      "summary": "Zig global build cache",
+      "group": "developer",
+      "icon": "hammer",
+      "risk": "low",
+      "defaultEnabled": true,
+      "rules": [
+        { "kind": "directoryContents", "path": "~/.cache/zig" }
+      ]
+    },
+    {
+      "id": "developer.composer_cache",
+      "title": "Composer cache",
+      "summary": "PHP Composer cache; re-downloaded on next install",
+      "group": "developer",
+      "icon": "package",
+      "risk": "low",
+      "defaultEnabled": true,
+      "rules": [
+        { "kind": "directoryContents", "path": "~/.composer/cache" },
+        { "kind": "directoryContents", "path": "~/Library/Caches/composer" }
+      ]
+    },
+    {
+      "id": "developer.android_caches",
+      "title": "Android build caches",
+      "summary": "Android SDK build caches",
+      "group": "developer",
+      "icon": "iphone",
+      "risk": "low",
+      "defaultEnabled": true,
+      "rules": [
+        { "kind": "directoryContents", "path": "~/.android/build-cache" },
+        { "kind": "directoryContents", "path": "~/.android/cache" }
+      ]
+    },
+    {
+      "id": "developer.android_studio_caches",
+      "title": "Android Studio caches",
+      "summary": "Android Studio IDE caches",
+      "group": "developer",
+      "icon": "iphone",
+      "risk": "low",
+      "defaultEnabled": true,
+      "rules": [
+        { "kind": "glob", "path": "~/Library/Caches/Google/AndroidStudio*" }
+      ]
+    },
+    {
+      "id": "developer.xcode_ib_support",
+      "title": "Xcode Interface Builder cache",
+      "summary": "Interface Builder support files",
+      "group": "developer",
+      "icon": "iphone",
+      "risk": "low",
+      "defaultEnabled": true,
+      "rules": [
+        { "kind": "directoryContents", "path": "~/Library/Developer/Xcode/UserData/IB Support" }
+      ]
+    },
+    {
+      "id": "developer.xctest_devices",
+      "title": "XCTestDevices",
+      "summary": "Test-runner simulator devices",
+      "group": "developer",
+      "icon": "iphone",
+      "risk": "low",
+      "defaultEnabled": true,
+      "rules": [
+        { "kind": "directoryContents", "path": "~/Library/Developer/XCTestDevices" }
+      ]
+    },
+    {
+      "id": "developer.xcode_devicesupport_extra",
+      "title": "Xcode watchOS/tvOS device support",
+      "summary": "Symbol caches for connected watchOS/tvOS devices",
+      "group": "developer",
+      "icon": "iphone",
+      "risk": "low",
+      "defaultEnabled": true,
+      "rules": [
+        { "kind": "directoryContents", "path": "~/Library/Developer/Xcode/watchOS DeviceSupport" },
+        { "kind": "directoryContents", "path": "~/Library/Developer/Xcode/tvOS DeviceSupport" }
+      ]
+    },
+    {
+      "id": "developer.docker_buildx_cache",
+      "title": "Docker buildx cache",
+      "summary": "Docker BuildKit build cache",
+      "group": "developer",
+      "icon": "network",
+      "risk": "low",
+      "defaultEnabled": true,
+      "rules": [
+        { "kind": "directoryContents", "path": "~/.docker/buildx/cache" }
+      ]
+    },
+    {
+      "id": "developer.kube_cache",
+      "title": "Kubernetes cache",
+      "summary": "kubectl discovery/HTTP cache",
+      "group": "developer",
+      "icon": "network",
+      "risk": "low",
+      "defaultEnabled": true,
+      "rules": [
+        { "kind": "directoryContents", "path": "~/.kube/cache" }
+      ]
+    },
+    {
+      "id": "developer.terraform_cache",
+      "title": "Terraform plugin cache",
+      "summary": "Terraform provider plugin cache",
+      "group": "developer",
+      "icon": "network",
+      "risk": "low",
+      "defaultEnabled": true,
+      "rules": [
+        { "kind": "directoryContents", "path": "~/.cache/terraform" }
+      ]
+    },
+    {
+      "id": "developer.cloud_cli_caches",
+      "title": "Cloud CLI caches & logs",
+      "summary": "AWS, gcloud and Azure CLI caches and logs",
+      "group": "developer",
+      "icon": "network",
+      "risk": "low",
+      "defaultEnabled": true,
+      "rules": [
+        { "kind": "directoryContents", "path": "~/.aws/cli/cache" },
+        { "kind": "directoryContents", "path": "~/.config/gcloud/logs" },
+        { "kind": "directoryContents", "path": "~/.azure/logs" }
+      ]
+    },
+    {
+      "id": "developer.db_api_tool_caches",
+      "title": "Database & API client caches",
+      "summary": "Caches for DBeaver, Postman, Insomnia, TablePlus, MongoDB Compass",
+      "group": "developer",
+      "icon": "macwindow",
+      "risk": "low",
+      "defaultEnabled": true,
+      "rules": [
+        { "kind": "glob", "path": "~/Library/Caches/com.dbeaver.*" },
+        { "kind": "directoryContents", "path": "~/Library/Caches/com.postmanlabs.mac" },
+        { "kind": "directoryContents", "path": "~/Library/Caches/com.konghq.insomnia" },
+        { "kind": "directoryContents", "path": "~/Library/Caches/com.tinyapp.TablePlus" },
+        { "kind": "directoryContents", "path": "~/Library/Caches/com.mongodb.compass" }
+      ]
+    },
+    {
+      "id": "developer.playwright_browsers",
+      "title": "Playwright browsers",
+      "summary": "Downloaded test browsers; large, re-downloaded on next install",
+      "group": "developer",
+      "icon": "globe",
+      "risk": "medium",
+      "defaultEnabled": false,
+      "rules": [
+        { "kind": "directoryContents", "path": "~/Library/Caches/ms-playwright" }
+      ]
+    },
+    {
+      "id": "developer.conda_pkgs",
+      "title": "conda package cache",
+      "summary": "conda downloaded packages; re-downloaded on next install",
+      "group": "developer",
+      "icon": "package",
+      "risk": "medium",
+      "defaultEnabled": false,
+      "rules": [
+        { "kind": "directoryContents", "path": "~/.conda/pkgs" }
+      ]
+    },
+    {
+      "id": "developer.huggingface_cache",
+      "title": "Hugging Face models",
+      "summary": "Downloaded ML models; large, re-downloaded when needed",
+      "group": "developer",
+      "icon": "flame",
+      "risk": "medium",
+      "defaultEnabled": false,
+      "rules": [
+        { "kind": "directoryContents", "path": "~/.cache/huggingface" }
+      ]
+    },
+    {
+      "id": "developer.torch_cache",
+      "title": "PyTorch cache",
+      "summary": "Downloaded PyTorch models and weights",
+      "group": "developer",
+      "icon": "flame",
+      "risk": "medium",
+      "defaultEnabled": false,
+      "rules": [
+        { "kind": "directoryContents", "path": "~/.cache/torch" }
+      ]
+    },
+    {
+      "id": "developer.tensorflow_cache",
+      "title": "TensorFlow cache",
+      "summary": "Downloaded TensorFlow datasets and models",
+      "group": "developer",
+      "icon": "flame",
+      "risk": "medium",
+      "defaultEnabled": false,
+      "rules": [
+        { "kind": "directoryContents", "path": "~/.cache/tensorflow" }
+      ]
+    },
+    {
+      "id": "developer.go_mod_cache",
+      "title": "Go module cache",
+      "summary": "Downloaded Go modules; re-downloaded on next build",
+      "group": "developer",
+      "icon": "package",
+      "risk": "medium",
+      "defaultEnabled": false,
+      "rules": [
+        { "kind": "directoryContents", "path": "~/go/pkg/mod" }
+      ]
+    },
+    {
+      "id": "developer.nuget_packages",
+      "title": "NuGet packages",
+      "summary": ".NET package cache; re-downloaded on next restore",
+      "group": "developer",
+      "icon": "package",
+      "risk": "medium",
+      "defaultEnabled": false,
+      "rules": [
+        { "kind": "directoryContents", "path": "~/.nuget/packages" }
+      ]
+    },
+    {
+      "id": "developer.ivy_cache",
+      "title": "Ivy cache",
+      "summary": "Apache Ivy dependency cache; re-downloaded on next build",
+      "group": "developer",
+      "icon": "package",
+      "risk": "medium",
+      "defaultEnabled": false,
+      "rules": [
+        { "kind": "directoryContents", "path": "~/.ivy2/cache" }
+      ]
+    },
+    {
+      "id": "developer.bazel_cache",
+      "title": "Bazel cache",
+      "summary": "Bazel build cache; large rebuild on next build",
+      "group": "developer",
+      "icon": "hammer",
+      "risk": "medium",
+      "defaultEnabled": false,
+      "rules": [
+        { "kind": "directoryContents", "path": "~/.cache/bazel" }
+      ]
+    },
+    {
+      "id": "app.figma",
+      "title": "Figma",
+      "summary": "Figma desktop cache",
+      "group": "app",
+      "icon": "photo",
+      "risk": "low",
+      "defaultEnabled": true,
+      "requiresAppQuit": "com.figma.Desktop",
+      "rules": [
+        { "kind": "directoryContents", "path": "~/Library/Caches/com.figma.Desktop" }
+      ]
+    },
+    {
+      "id": "app.github_desktop",
+      "title": "GitHub Desktop",
+      "summary": "GitHub Desktop cache",
+      "group": "app",
+      "icon": "code",
+      "risk": "low",
+      "defaultEnabled": true,
+      "rules": [
+        { "kind": "directoryContents", "path": "~/Library/Caches/com.github.GitHubDesktop" }
+      ]
+    },
+    {
+      "id": "app.unity",
+      "title": "Unity",
+      "summary": "Unity Editor caches",
+      "group": "app",
+      "icon": "macwindow",
+      "risk": "low",
+      "defaultEnabled": true,
+      "rules": [
+        { "kind": "glob", "path": "~/Library/Caches/com.unity3d.*" }
+      ]
     }
   ]
 }
