@@ -11,7 +11,6 @@ struct BurrowApp: App {
         WindowGroup {
             RootView()
                 .environmentObject(updater)
-                .task { updater.checkOnLaunch() }
         }
         .commands {
             // Replaces the default no-op "Burrow → About Burrow" group with

@@ -21,6 +21,15 @@ final class UpdaterController: ObservableObject {
             userDriverDelegate: nil
         )
 
+        // Force a silent update check on every launch. Per Sparkle's docs this
+        // MUST run immediately after the updater starts and before the next
+        // runloop cycle — calling it later (e.g. from a SwiftUI `.task`) races
+        // the scheduler and no-ops with "sessionInProgress". Gated by the
+        // auto-update preference so the Settings toggle stays a kill switch.
+        if controller.updater.automaticallyChecksForUpdates {
+            controller.updater.checkForUpdatesInBackground()
+        }
+
         // Mirror the updater's `canCheckForUpdates` into a Published value so
         // SwiftUI menu/button items can `.disabled(!vm.canCheckForUpdates)`.
         controller.updater.publisher(for: \.canCheckForUpdates)
@@ -39,14 +48,5 @@ final class UpdaterController: ObservableObject {
 
     func checkForUpdates() {
         controller.checkForUpdates(nil)
-    }
-
-    /// Silent launch-time probe. Sparkle only surfaces UI if a new
-    /// version is found; otherwise it's a no-op. Skipped when the user
-    /// has turned off auto-update in Settings so the toggle remains a
-    /// proper kill switch.
-    func checkOnLaunch() {
-        guard controller.updater.automaticallyChecksForUpdates else { return }
-        controller.updater.checkForUpdatesInBackground()
     }
 }
