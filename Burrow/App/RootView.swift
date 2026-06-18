@@ -18,6 +18,7 @@ struct RootView: View {
     @StateObject private var cleanVM = CleanViewModel()
     @StateObject private var uninstallVM = UninstallViewModel()
     @StateObject private var analyzeVM = AnalyzeViewModel()
+    @StateObject private var licenseVM = LicenseViewModel()
 
     var body: some View {
         HStack(spacing: 0) {
@@ -126,6 +127,7 @@ struct RootView: View {
         case .clean:     CleanView(vm: cleanVM)
         case .uninstall: UninstallView(vm: uninstallVM)
         case .analyze:   AnalyzeView(vm: analyzeVM)
+        case .licenses:  LicenseView(vm: licenseVM)
         case .status:    placeholder(for: .status)
         }
     }
@@ -152,6 +154,7 @@ enum SidebarDestination: String, CaseIterable, Hashable {
     case clean
     case uninstall
     case analyze
+    case licenses
     case status
 
     var title: String {
@@ -159,6 +162,7 @@ enum SidebarDestination: String, CaseIterable, Hashable {
         case .clean:     return "Clean"
         case .uninstall: return "Uninstall"
         case .analyze:   return "Analyze"
+        case .licenses:  return "Licenses"
         case .status:    return "Status"
         }
     }
@@ -168,6 +172,7 @@ enum SidebarDestination: String, CaseIterable, Hashable {
         case .clean:     return Iconography.sfSymbol(for: "sparkles")
         case .uninstall: return Iconography.sfSymbol(for: "package-x")
         case .analyze:   return Iconography.sfSymbol(for: "chart-pie")
+        case .licenses:  return Iconography.sfSymbol(for: "badge-check")
         case .status:    return Iconography.sfSymbol(for: "activity")
         }
     }

@@ -4,7 +4,7 @@ import Foundation
 /// types; the view loads `NSWorkspace.icon(forFile:)` at render time.
 /// Identity is the bundle ID; two installs with the same bundle ID
 /// (e.g. /Applications + ~/Applications) are treated as one app.
-struct InstalledApp: Hashable, Identifiable {
+struct InstalledApp: Hashable, Identifiable, Sendable {
     /// `CFBundleIdentifier` — primary key, drives leftover scan.
     let bundleId: String
 

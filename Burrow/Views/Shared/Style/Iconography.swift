@@ -30,6 +30,7 @@ enum Iconography {
         case "package-x":               return "xmark.bin"
         case "chart-pie":               return "chart.pie"
         case "activity":                return "waveform.path.ecg"
+        case "badge-check":             return "checkmark.seal"
         case "code":                    return "chevron.left.forwardslash.chevron.right"
         default:                        return "questionmark.circle"
         }
