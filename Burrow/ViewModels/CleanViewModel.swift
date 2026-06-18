@@ -367,9 +367,15 @@ final class CleanViewModel: ObservableObject {
     }
 
     /// Categories grouped by `CategoryGroup`, sorted alphabetically by
-    /// the group's raw value for stable UI ordering.
+    /// the group's raw value for stable UI ordering. Categories that were
+    /// scanned and found empty (0 bytes) are hidden — only meaningful
+    /// results stay in the list. Un-scanned categories are always shown.
     var categoriesByGroup: [(group: CategoryGroup, categories: [CleanCategory])] {
-        let grouped = Dictionary(grouping: categories, by: \.group)
+        let visible = categories.filter { category in
+            guard let result = scanResults[category.id] else { return true }
+            return result.totalBytes > 0
+        }
+        let grouped = Dictionary(grouping: visible, by: \.group)
         return grouped
             .sorted { $0.key.rawValue < $1.key.rawValue }
             .map { (group: $0.key, categories: $0.value) }
