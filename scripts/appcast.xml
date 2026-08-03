@@ -186,5 +186,17 @@
                 length="2268822"
                 type="application/octet-stream" />
         </item>
+        <item>
+            <title>Version 0.2.4</title>
+            <pubDate>Mon, 03 Aug 2026 03:42:19 +0000</pubDate>
+            <sparkle:version>16</sparkle:version>
+            <sparkle:shortVersionString>0.2.4</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>12.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/guide-vinh/Burrow/releases/download/v0.2.4/Burrow-0.2.4.zip"
+                sparkle:edSignature="URW0IYJHZoVLB7t/ZQoJ2zJhJsfTX6Wbqv/JiBJpKU4RUc9QjDu4CP/oOJZG+KZjldcZd6Q6lKRo1USIPQf/DA=="
+                length="2303591"
+                type="application/octet-stream" />
+        </item>
     </channel>
 </rss>
