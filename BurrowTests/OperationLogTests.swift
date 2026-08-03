@@ -130,10 +130,22 @@ final class OperationLogTests: XCTestCase {
     }
 
     func testDefaultLogURLIsUnderUserLogs() {
-        let path = OperationLog.defaultLogURL.path
+        let dir = OperationLog.defaultLogsDirectory.path
         XCTAssertTrue(
-            path.hasSuffix("/Library/Logs/Burrow/operations.log"),
-            "defaultLogURL.path should end in /Library/Logs/Burrow/operations.log, got \(path)"
+            dir.hasSuffix("/Library/Logs/Burrow"),
+            "defaultLogsDirectory.path should end in /Library/Logs/Burrow, got \(dir)"
+        )
+
+        // Production log rotates daily: operations-yyyy-MM-dd.log.
+        let path = OperationLog.shared.logURL.path
+        XCTAssertTrue(
+            path.hasPrefix(dir + "/operations-") && path.hasSuffix(".log"),
+            "shared.logURL should be a dated file inside the logs dir, got \(path)"
+        )
+        let name = (path as NSString).lastPathComponent
+        XCTAssertNotNil(
+            name.range(of: #"^operations-\d{4}-\d{2}-\d{2}\.log$"#, options: .regularExpression),
+            "daily log name should match operations-yyyy-MM-dd.log, got \(name)"
         )
     }
 }

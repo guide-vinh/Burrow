@@ -2,8 +2,10 @@ import Foundation
 import os
 
 /// Append-only JSONL audit log for every destructive Burrow operation.
-/// Required by SPEC section 6. Lives at `~/Library/Logs/Burrow/operations.log`
-/// by default; tests inject a tmpdir URL.
+/// Required by SPEC section 6. Production writes one file per day —
+/// `~/Library/Logs/Burrow/operations-2026-08-03.log` — so a long-lived
+/// install doesn't accumulate a single unreadable log; tests inject a
+/// fixed tmpdir URL and keep the one-file behavior.
 actor OperationLog {
 
     // MARK: - Nested types
@@ -17,32 +19,55 @@ actor OperationLog {
 
     // MARK: - Singleton
 
-    /// Production singleton, points at the default user log path.
+    /// Production singleton, writes daily files under the default logs dir.
     static let shared = OperationLog()
 
     // MARK: - Properties
 
-    let logURL: URL
+    /// Injected by tests; nil in production (daily rotation).
+    private let fixedLogURL: URL?
+
+    /// Directory holding every log file.
+    let logsDirectory: URL
 
     private let logger = Logger(subsystem: "fun.burrow", category: "OperationLog")
 
     // MARK: - Init
 
-    /// Inject a custom URL for tests. Default is
-    /// `~/Library/Logs/Burrow/operations.log`.
-    init(logURL: URL = OperationLog.defaultLogURL) {
-        self.logURL = logURL
+    /// Production initializer — daily files in `~/Library/Logs/Burrow/`.
+    init() {
+        self.fixedLogURL = nil
+        self.logsDirectory = Self.defaultLogsDirectory
     }
 
-    // MARK: - Default path
+    /// Test initializer: every append goes to exactly this file, no
+    /// daily rotation.
+    init(logURL: URL) {
+        self.fixedLogURL = logURL
+        self.logsDirectory = logURL.deletingLastPathComponent()
+    }
 
-    /// `~/Library/Logs/Burrow/operations.log`.
+    // MARK: - Paths
+
+    /// `~/Library/Logs/Burrow`.
     /// Uses `NSHomeDirectory()` — never hardcodes a user name.
-    static var defaultLogURL: URL {
+    static var defaultLogsDirectory: URL {
         let home = NSHomeDirectory() as NSString
-        let logsDir = home.appendingPathComponent("Library/Logs/Burrow")
-        return URL(fileURLWithPath: (logsDir as NSString)
-            .appendingPathComponent("operations.log"))
+        return URL(fileURLWithPath: home.appendingPathComponent("Library/Logs/Burrow"))
+    }
+
+    /// File that receives appends right now: the injected fixture in
+    /// tests, or today's `operations-yyyy-MM-dd.log` in production.
+    nonisolated var logURL: URL {
+        if let fixedLogURL { return fixedLogURL }
+        return logsDirectory.appendingPathComponent("operations-\(Self.dayStamp()).log")
+    }
+
+    private nonisolated static func dayStamp(for date: Date = Date()) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: date)
     }
 
     // MARK: - Append
@@ -53,9 +78,8 @@ actor OperationLog {
     /// (across processes or threads) cannot interleave bytes.
     func append(_ entry: OperationLogEntry) throws {
         // 1. Ensure parent directory exists (idempotent).
-        let parentDir = logURL.deletingLastPathComponent()
         try FileManager.default.createDirectory(
-            at: parentDir,
+            at: logsDirectory,
             withIntermediateDirectories: true
         )
 
@@ -97,16 +121,43 @@ actor OperationLog {
 
     // MARK: - Read
 
-    /// Read all entries currently in the file, in append order. Returns
-    /// an empty array if the log file does not exist.
+    /// Read all entries across every log file — the legacy single
+    /// `operations.log` (pre-rotation installs) first, then daily files
+    /// oldest-first. Append order is preserved within each file.
+    /// Returns an empty array if no log file exists yet.
     func readAll() throws -> [OperationLogEntry] {
+        var entries: [OperationLogEntry] = []
+        for url in logFilesOldestFirst() {
+            entries.append(contentsOf: try read(file: url))
+        }
+        return entries
+    }
+
+    /// Every log file in chronological order. In fixed-URL (test) mode
+    /// this is just the injected file.
+    private func logFilesOldestFirst() -> [URL] {
+        if let fixedLogURL { return [fixedLogURL] }
+
+        guard let names = try? FileManager.default
+            .contentsOfDirectory(atPath: logsDirectory.path) else {
+            return []
+        }
+        // yyyy-MM-dd stamps sort chronologically as plain strings.
+        let daily = names
+            .filter { $0.hasPrefix("operations-") && $0.hasSuffix(".log") }
+            .sorted()
+        let legacy = names.contains("operations.log") ? ["operations.log"] : []
+        return (legacy + daily).map { logsDirectory.appendingPathComponent($0) }
+    }
+
+    private func read(file url: URL) throws -> [OperationLogEntry] {
         // 1. Missing log is valid initial state — not an error.
-        guard FileManager.default.fileExists(atPath: logURL.path) else {
+        guard FileManager.default.fileExists(atPath: url.path) else {
             return []
         }
 
         // 2. Read the whole file.
-        let data = try Data(contentsOf: logURL)
+        let data = try Data(contentsOf: url)
 
         // 3. Split by newline (0x0A), skip empty trailing chunk.
         let decoder = JSONDecoder()
