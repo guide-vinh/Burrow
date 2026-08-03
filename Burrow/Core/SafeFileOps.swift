@@ -101,14 +101,17 @@ enum SafeFileOps {
         return bytes
     }
 
-    /// Permanent deletion. Reserved for the "Empty Trash" rule per SPEC
-    /// section 6 — every other code path uses `trash(_:)`.
+    /// Permanent deletion, bypassing the Trash. Only reachable from the
+    /// "Empty Trash" rule and the explicit, user-confirmed Delete
+    /// buttons — every other code path uses `trash(_:)`.
     @discardableResult
-    static func permanentlyDelete(_ url: URL, dryRun: Bool = false) throws -> Int64 {
+    static func permanentlyDelete(_ url: URL, dryRun: Bool = false) async throws -> Int64 {
         try validate(url)
         let bytes = size(url)
         if !dryRun {
-            try FileManager.default.removeItem(at: url)
+            try await Task.detached(priority: .utility) {
+                try FileManager.default.removeItem(at: url)
+            }.value
         }
         return bytes
     }

@@ -166,7 +166,7 @@ final class CleanViewModel: ObservableObject {
     /// scan dict, which made the header "Found N reclaimable" total
     /// jump to zero after a partial cleanup — users had to re-scan
     /// just to see what was still on disk.)
-    func apply() async {
+    func apply(permanently: Bool = false) async {
         guard let engine else {
             lastError = "Catalog not loaded"
             logger.warning("apply() called before catalog was loaded")
@@ -185,7 +185,7 @@ final class CleanViewModel: ObservableObject {
             guard let result = scanResults[id] else { continue }
 
             do {
-                let bytes = try await engine.apply(result, dryRun: dryRun)
+                let bytes = try await engine.apply(result, dryRun: dryRun, permanently: permanently)
                 totalBytes += bytes
                 totalItems += result.items.count
                 appliedIds.insert(id)
@@ -218,6 +218,13 @@ final class CleanViewModel: ObservableObject {
     }
 
     // MARK: - Banner
+
+    /// Banner wording for the current run: dry-run → preview, real
+    /// trash → trashed, real permanent delete → deleted.
+    private func bannerKind(permanently: Bool) -> PreviewSummary.Kind {
+        if dryRun { return .preview }
+        return permanently ? .deleted : .trashed
+    }
 
     /// User taps the × on the banner.
     func dismissPreviewBanner() {
@@ -432,8 +439,9 @@ final class CleanViewModel: ObservableObject {
 
     /// Apply every selection — categories + node_modules + Flutter caches.
     /// Computes combined banner totals up-front so we can override the
-    /// per-method banners with one summary at the end.
-    func applyAll() async {
+    /// per-method banners with one summary at the end. `permanently`
+    /// bypasses the Trash (callers must confirm with the user first).
+    func applyAll(permanently: Bool = false) async {
         let hasCategories = selectedItemCount > 0
         let hasNodeModules = !nodeModulesSelection.isEmpty
         let hasFlutter = !flutterSelection.isEmpty
@@ -442,11 +450,15 @@ final class CleanViewModel: ObservableObject {
         let totalItems = combinedSelectedItemCount
         let totalBytes = combinedSelectedBytes
 
-        if hasCategories { await apply() }
-        if hasNodeModules { await trashSelectedNodeModules() }
-        if hasFlutter { await trashSelectedFlutterProjects() }
+        if hasCategories { await apply(permanently: permanently) }
+        if hasNodeModules { await trashSelectedNodeModules(permanently: permanently) }
+        if hasFlutter { await trashSelectedFlutterProjects(permanently: permanently) }
 
-        previewBanner = PreviewSummary(items: totalItems, bytes: totalBytes)
+        previewBanner = PreviewSummary(
+            items: totalItems,
+            bytes: totalBytes,
+            kind: bannerKind(permanently: permanently)
+        )
         if dryRun { scheduleBannerDismiss() }
     }
 
@@ -466,8 +478,9 @@ final class CleanViewModel: ObservableObject {
     }
 
     /// Trash every selected node_modules dir. Honors `dryRun`. Removes
-    /// successfully-trashed entries from the list.
-    func trashSelectedNodeModules() async {
+    /// successfully-trashed entries from the list. `permanently`
+    /// bypasses the Trash (callers must confirm with the user first).
+    func trashSelectedNodeModules(permanently: Bool = false) async {
         guard !nodeModulesSelection.isEmpty else { return }
 
         let targets = nodeModulesEntries.filter { nodeModulesSelection.contains($0.url) }
@@ -476,12 +489,14 @@ final class CleanViewModel: ObservableObject {
 
         for entry in targets {
             do {
-                let bytes = try await SafeFileOps.trash(entry.url, dryRun: dryRun)
+                let bytes = permanently
+                    ? try await SafeFileOps.permanentlyDelete(entry.url, dryRun: dryRun)
+                    : try await SafeFileOps.trash(entry.url, dryRun: dryRun)
                 bytesReclaimed += bytes
                 removed.insert(entry.url)
                 try? await log.append(OperationLogEntry(
                     timestamp: Date(),
-                    action: .trash,
+                    action: permanently ? .permanentDelete : .trash,
                     target: entry.url.path,
                     bytes: bytes,
                     dryRun: dryRun
@@ -497,7 +512,11 @@ final class CleanViewModel: ObservableObject {
             nodeModulesEntries.removeAll { removed.contains($0.url) }
             nodeModulesSelection.subtract(removed)
         }
-        previewBanner = PreviewSummary(items: removed.count, bytes: bytesReclaimed)
+        previewBanner = PreviewSummary(
+            items: removed.count,
+            bytes: bytesReclaimed,
+            kind: bannerKind(permanently: permanently)
+        )
     }
 
     // MARK: - Flutter projects
@@ -555,8 +574,9 @@ final class CleanViewModel: ObservableObject {
 
     /// Trash `.dart_tool` and `build` for every selected Flutter project.
     /// Honors `dryRun`. A project is removed from the list only if every
-    /// cache it owns trashed successfully.
-    func trashSelectedFlutterProjects() async {
+    /// cache it owns trashed successfully. `permanently` bypasses the
+    /// Trash (callers must confirm with the user first).
+    func trashSelectedFlutterProjects(permanently: Bool = false) async {
         guard !flutterSelection.isEmpty else { return }
 
         let targets = flutterProjects.filter { flutterSelection.contains($0.projectURL) }
@@ -568,11 +588,13 @@ final class CleanViewModel: ObservableObject {
             var allOK = true
             for cacheURL in caches {
                 do {
-                    let bytes = try await SafeFileOps.trash(cacheURL, dryRun: dryRun)
+                    let bytes = permanently
+                        ? try await SafeFileOps.permanentlyDelete(cacheURL, dryRun: dryRun)
+                        : try await SafeFileOps.trash(cacheURL, dryRun: dryRun)
                     bytesReclaimed += bytes
                     try? await log.append(OperationLogEntry(
                         timestamp: Date(),
-                        action: .trash,
+                        action: permanently ? .permanentDelete : .trash,
                         target: cacheURL.path,
                         bytes: bytes,
                         dryRun: dryRun
@@ -591,7 +613,11 @@ final class CleanViewModel: ObservableObject {
             flutterProjects.removeAll { removed.contains($0.projectURL) }
             flutterSelection.subtract(removed)
         }
-        previewBanner = PreviewSummary(items: removed.count, bytes: bytesReclaimed)
+        previewBanner = PreviewSummary(
+            items: removed.count,
+            bytes: bytesReclaimed,
+            kind: bannerKind(permanently: permanently)
+        )
     }
 
     // MARK: - Docker cache (IRREVERSIBLE — separate from the trash flow)
@@ -680,7 +706,13 @@ final class CleanViewModel: ObservableObject {
             dockerSelection.subtract(succeeded)
         }
 
-        previewBanner = PreviewSummary(items: succeeded.count, bytes: bytesReclaimed)
+        // Docker prune never goes through the Trash, so a real run
+        // reads as a delete.
+        previewBanner = PreviewSummary(
+            items: succeeded.count,
+            bytes: bytesReclaimed,
+            kind: dryRun ? .preview : .deleted
+        )
         if dryRun { scheduleBannerDismiss() }
     }
 }

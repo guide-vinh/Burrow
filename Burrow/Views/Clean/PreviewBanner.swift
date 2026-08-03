@@ -1,11 +1,31 @@
 import SwiftUI
 
-/// Transient confirmation that a dry-run apply ran. Auto-dismissed by
-/// the view-model 5 seconds after appearing, or manually via the ×.
+/// Transient confirmation that an apply ran — a dry-run preview, a real
+/// move to Trash, or a real permanent delete, per `summary.kind`.
+/// Auto-dismissed by the view-model 5 seconds after appearing, or
+/// manually via the ×.
 struct PreviewBanner: View {
     let summary: PreviewSummary
-    let onShowInFinder: () -> Void
+    let actionTitle: String
+    let onAction: () -> Void
     let onDismiss: () -> Void
+
+    private var title: String {
+        switch summary.kind {
+        case .preview:            return "Preview complete"
+        case .trashed, .deleted:  return "Cleanup complete"
+        }
+    }
+
+    private var detail: String {
+        let bytes = summary.bytes.formatted(.byteCount(style: .file))
+        let paths = "\(summary.items) \(summary.items == 1 ? "path" : "paths")"
+        switch summary.kind {
+        case .preview: return "Would have moved \(bytes) across \(paths)"
+        case .trashed: return "Moved \(bytes) across \(paths) to the Trash"
+        case .deleted: return "Deleted \(bytes) across \(paths)"
+        }
+    }
 
     var body: some View {
         HStack(spacing: Spacing.md) {
@@ -14,10 +34,10 @@ struct PreviewBanner: View {
                 .foregroundStyle(Color.accentPrimary)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text("Preview complete")
+                Text(title)
                     .font(.bodySMed)
                     .foregroundStyle(Color.fgPrimary)
-                Text("Would have moved \(summary.bytes, format: .byteCount(style: .file)) across \(summary.items) \(summary.items == 1 ? "path" : "paths")")
+                Text(detail)
                     .font(.bodyS)
                     .foregroundStyle(Color.fgSecondary)
                     .monospacedDigit()
@@ -25,7 +45,7 @@ struct PreviewBanner: View {
 
             Spacer()
 
-            Button("Show in Finder", action: onShowInFinder)
+            Button(actionTitle, action: onAction)
                 .buttonStyle(.plain)
                 .font(.bodySMed)
                 .foregroundStyle(Color.accentPrimary)
@@ -48,7 +68,8 @@ struct PreviewBanner_Previews: PreviewProvider {
     static var previews: some View {
         PreviewBanner(
             summary: .init(items: 2, bytes: 48_500_000),
-            onShowInFinder: {},
+            actionTitle: "View Log",
+            onAction: {},
             onDismiss: {}
         )
         .frame(width: 760)

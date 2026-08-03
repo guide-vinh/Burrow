@@ -12,6 +12,7 @@ struct TreemapCanvas: View {
     enum ContextMenuAction {
         case revealInFinder
         case moveToTrash
+        case delete
     }
 
     // MARK: - State
@@ -111,6 +112,14 @@ struct TreemapCanvas: View {
                                 } label: {
                                     Label("Move to Trash",
                                           systemImage: "trash")
+                                        .foregroundStyle(Color.destructive)
+                                }
+
+                                Button(role: .destructive) {
+                                    onContextMenu(entry, .delete)
+                                } label: {
+                                    Label("Delete",
+                                          systemImage: "trash.slash")
                                         .foregroundStyle(Color.destructive)
                                 }
                             }

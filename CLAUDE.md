@@ -86,7 +86,8 @@ Pattern set by `NodeModulesScanner` / `FlutterProjectScanner`:
 - **`SafeFileOps` is the single mutation point.** `validate(_:)` enforces a deny-list
   (system dirs, and user roots like Documents/Desktop/Downloads) before any trash/delete.
 - Everything is **moved to Trash** (`NSWorkspace.recycle`), never hard-deleted, except the
-  explicit "Empty Trash" path (`permanentlyDelete`).
+  explicit "Empty Trash" path and the user-confirmed **Delete** buttons (`permanentlyDelete`,
+  always behind a confirmation alert).
 - Every action (including dry-runs) is appended to `OperationLog`.
 - `olderThanDays` filters on mtime; files whose age can't be read are conservatively skipped.
 

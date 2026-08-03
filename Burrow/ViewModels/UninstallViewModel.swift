@@ -121,7 +121,9 @@ final class UninstallViewModel: ObservableObject {
     /// failures are recorded in `lastError` and the loop continues.
     /// On a real (non-dry) successful apply, clears state and re-
     /// discovers apps so the trashed .app drops out of the list.
-    func uninstall() async {
+    /// `permanently` bypasses the Trash (callers must confirm with the
+    /// user first).
+    func uninstall(permanently: Bool = false) async {
         guard !checkedURLs.isEmpty else { return }
 
         isApplying = true
@@ -133,13 +135,15 @@ final class UninstallViewModel: ObservableObject {
 
         for url in checkedURLs {
             do {
-                let bytes = try await SafeFileOps.trash(url, dryRun: dryRun)
+                let bytes = permanently
+                    ? try await SafeFileOps.permanentlyDelete(url, dryRun: dryRun)
+                    : try await SafeFileOps.trash(url, dryRun: dryRun)
                 totalBytes += bytes
                 totalItems += 1
 
                 let entry = OperationLogEntry(
                     timestamp: Date(),
-                    action: .trash,
+                    action: permanently ? .permanentDelete : .trash,
                     target: url.path,
                     bytes: bytes,
                     dryRun: dryRun

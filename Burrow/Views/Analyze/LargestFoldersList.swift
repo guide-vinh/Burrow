@@ -90,7 +90,8 @@ private struct FolderDisclosure: View {
                 onToggle: toggle,
                 onOpen: { vm.openInFinder(folder) },
                 onReveal: { vm.revealInFinder(folder) },
-                onTrash: { Task { await vm.moveToTrash(folder) } }
+                onTrash: { Task { await vm.moveToTrash(folder) } },
+                onDelete: { Task { await vm.deletePermanently(folder) } }
             )
             if isExpanded {
                 expandedContent
@@ -158,6 +159,9 @@ private struct FolderRow: View {
     let onOpen: () -> Void
     let onReveal: () -> Void
     let onTrash: () -> Void
+    let onDelete: () -> Void
+
+    @State private var showDeleteConfirm = false
 
     private var compact: Bool { depth > 0 }
     private var style: (icon: String, tint: Color) { FolderIconStyle.style(for: folder) }
@@ -212,6 +216,13 @@ private struct FolderRow: View {
             Button("Open in Finder", action: onOpen)
             Button("Reveal in Finder", action: onReveal)
             Button("Move to Trash", role: .destructive, action: onTrash)
+            Button("Delete", role: .destructive) { showDeleteConfirm = true }
+        }
+        .alert("Delete \(folder.name)?", isPresented: $showDeleteConfirm) {
+            Button("Cancel", role: .cancel) {}
+            Button("Delete", role: .destructive, action: onDelete)
+        } message: {
+            Text("\(folder.humanSize) will be deleted immediately, bypassing the Trash. This cannot be undone.")
         }
     }
 

@@ -7,6 +7,7 @@ import SwiftUI
 struct UninstallDetail: View {
     @ObservedObject var vm: UninstallViewModel
     @State private var showConfirmAlert = false
+    @State private var permanentDelete = false
 
     var body: some View {
         if let app = vm.selectedApp {
@@ -16,8 +17,11 @@ struct UninstallDetail: View {
                     isPresented: $showConfirmAlert
                 ) {
                     Button("Cancel", role: .cancel) {}
-                    Button("Move to Trash", role: .destructive) {
-                        Task { await vm.uninstall() }
+                    Button(
+                        permanentDelete ? "Delete Permanently" : "Move to Trash",
+                        role: .destructive
+                    ) {
+                        Task { await vm.uninstall(permanently: permanentDelete) }
                     }
                 } message: {
                     Text(confirmMessage)
@@ -38,7 +42,9 @@ struct UninstallDetail: View {
         let count = vm.selectedItemCount
         let word = count == 1 ? "item" : "items"
         let bytes = vm.selectedTotalBytes.formatted(.byteCount(style: .file))
-        return "\(count) \(word) (\(bytes)) will move to Trash."
+        return permanentDelete
+            ? "\(count) \(word) (\(bytes)) will be deleted immediately, bypassing the Trash. This cannot be undone."
+            : "\(count) \(word) (\(bytes)) will move to Trash."
     }
 
     @ViewBuilder
@@ -50,7 +56,8 @@ struct UninstallDetail: View {
             if let summary = vm.previewBanner {
                 PreviewBanner(
                     summary: summary,
-                    onShowInFinder: { revealApp(app) },
+                    actionTitle: "Show in Finder",
+                    onAction: { revealApp(app) },
                     onDismiss: { vm.dismissPreviewBanner() }
                 )
                 Divider().background(Color.borderSubtle)
@@ -163,9 +170,14 @@ struct UninstallDetail: View {
                     }
                 } else {
                     DestructiveButton("Uninstall", icon: "trash") {
+                        permanentDelete = false
                         showConfirmAlert = true
                     }
                     .keyboardShortcut(.delete, modifiers: .command)
+                    DestructiveButton("Delete", icon: "trash.slash") {
+                        permanentDelete = true
+                        showConfirmAlert = true
+                    }
                 }
             }
             .disabled(vm.selectedItemCount == 0 || vm.isApplying)

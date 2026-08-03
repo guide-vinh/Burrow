@@ -85,14 +85,15 @@ actor RuleEngine {
 
     // MARK: - Apply
 
-    /// For each ScanItem, calls SafeFileOps.trash(_:dryRun:) and writes
-    /// an OperationLogEntry. Per-item failures are logged and skipped —
-    /// a single bad item never aborts the batch (SPEC section 6).
-    /// Returns the total bytes successfully acted on. In dry-run mode,
-    /// nothing is touched on disk but log entries ARE written with
-    /// dryRun=true (SPEC section 6 audit-trail requirement).
+    /// For each ScanItem, calls SafeFileOps.trash(_:dryRun:) — or
+    /// SafeFileOps.permanentlyDelete when `permanently` is true — and
+    /// writes an OperationLogEntry. Per-item failures are logged and
+    /// skipped — a single bad item never aborts the batch (SPEC section
+    /// 6). Returns the total bytes successfully acted on. In dry-run
+    /// mode, nothing is touched on disk but log entries ARE written
+    /// with dryRun=true (SPEC section 6 audit-trail requirement).
     @discardableResult
-    func apply(_ result: ScanResult, dryRun: Bool) async throws -> Int64 {
+    func apply(_ result: ScanResult, dryRun: Bool, permanently: Bool = false) async throws -> Int64 {
         var total: Int64 = 0
 
         for item in result.items {
@@ -101,17 +102,21 @@ actor RuleEngine {
             let bytes = item.bytes
 
             do {
-                try await SafeFileOps.trash(item.url, dryRun: dryRun)
+                if permanently {
+                    try await SafeFileOps.permanentlyDelete(item.url, dryRun: dryRun)
+                } else {
+                    try await SafeFileOps.trash(item.url, dryRun: dryRun)
+                }
             } catch {
                 logger.error(
-                    "Trash failed for \(item.url.path, privacy: .private): \(error.localizedDescription, privacy: .public)"
+                    "\(permanently ? "Delete" : "Trash", privacy: .public) failed for \(item.url.path, privacy: .private): \(error.localizedDescription, privacy: .public)"
                 )
                 continue
             }
 
             let entry = OperationLogEntry(
                 timestamp: Date(),
-                action: .trash,
+                action: permanently ? .permanentDelete : .trash,
                 target: item.url.path,
                 bytes: bytes,
                 dryRun: dryRun

@@ -211,11 +211,23 @@ final class AnalyzeViewModel: ObservableObject {
     }
 
     func moveToTrash(_ entry: DiskEntry) async {
+        await remove(entry, permanently: false)
+    }
+
+    /// Permanent deletion, bypassing the Trash. Callers must confirm
+    /// with the user first — this cannot be undone.
+    func deletePermanently(_ entry: DiskEntry) async {
+        await remove(entry, permanently: true)
+    }
+
+    private func remove(_ entry: DiskEntry, permanently: Bool) async {
         do {
-            let bytes = try await SafeFileOps.trash(entry.url, dryRun: false)
+            let bytes = permanently
+                ? try await SafeFileOps.permanentlyDelete(entry.url, dryRun: false)
+                : try await SafeFileOps.trash(entry.url, dryRun: false)
             try? await OperationLog.shared.append(OperationLogEntry(
                 timestamp: Date(),
-                action: .trash,
+                action: permanently ? .permanentDelete : .trash,
                 target: entry.url.path,
                 bytes: bytes,
                 dryRun: false
@@ -223,12 +235,14 @@ final class AnalyzeViewModel: ObservableObject {
             largestFolders.removeAll { $0.url == entry.url }
             childrenCache[entry.url] = nil
             logger.info(
-                "Trashed \(bytes, privacy: .public) bytes at \(entry.url.path, privacy: .private)"
+                "\(permanently ? "Deleted" : "Trashed", privacy: .public) \(bytes, privacy: .public) bytes at \(entry.url.path, privacy: .private)"
             )
         } catch {
-            scanError = "Couldn't move to Trash: \(error.localizedDescription)"
+            scanError = permanently
+                ? "Couldn't delete: \(error.localizedDescription)"
+                : "Couldn't move to Trash: \(error.localizedDescription)"
             logger.error(
-                "Trash failed: \(error.localizedDescription, privacy: .public) for \(entry.url.path, privacy: .private)"
+                "\(permanently ? "Delete" : "Trash", privacy: .public) failed: \(error.localizedDescription, privacy: .public) for \(entry.url.path, privacy: .private)"
             )
         }
     }

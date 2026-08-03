@@ -15,7 +15,8 @@ struct CleanView: View {
             if let summary = vm.previewBanner {
                 PreviewBanner(
                     summary: summary,
-                    onShowInFinder: revealLog,
+                    actionTitle: "View Log",
+                    onAction: openLog,
                     onDismiss: { vm.dismissPreviewBanner() }
                 )
                 Divider().background(Color.borderSubtle)
@@ -80,9 +81,15 @@ struct CleanView: View {
         }
     }
 
-    /// Reveal the operations log in Finder so the user can open it
-    /// with whichever app they prefer (TextEdit, BBEdit, VS Code, …).
-    private func revealLog() {
-        NSWorkspace.shared.activateFileViewerSelecting([vm.operationsLogURL])
+    /// Open today's operations log with the user's default .log viewer.
+    /// Falls back to revealing the logs folder in Finder if today's
+    /// file doesn't exist (e.g. every append in the run failed).
+    private func openLog() {
+        let url = vm.operationsLogURL
+        if FileManager.default.fileExists(atPath: url.path) {
+            NSWorkspace.shared.open(url)
+        } else {
+            NSWorkspace.shared.activateFileViewerSelecting([url.deletingLastPathComponent()])
+        }
     }
 }
