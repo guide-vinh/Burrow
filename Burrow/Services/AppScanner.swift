@@ -27,11 +27,20 @@ actor AppScanner {
 
     // MARK: - Public API
 
-    /// Walks /Applications, /Applications/Utilities, ~/Applications.
-    /// Parses each .app's Info.plist for bundleId/name/version/build.
-    /// Detects installSource per the catalog's homebrewDetection +
-    /// macAppStoreDetection blocks. Dedupes by bundleId. Returns
-    /// alphabetically sorted by `name.localizedStandardCompare`.
+    /// Maximum folder depth below an Applications root at which a .app
+    /// can sit — covers vendor nesting like
+    /// `/Applications/Adobe Creative Cloud/Adobe Photoshop/Photoshop.app`
+    /// without crawling arbitrarily deep trees.
+    private static let maxDiscoveryDepth = 4
+
+    /// Walks /Applications and ~/Applications recursively (up to
+    /// `maxDiscoveryDepth` levels, so vendor subfolders like
+    /// `/Applications/Setapp/Foo.app` are found too; never descends
+    /// into a .app bundle). Parses each .app's Info.plist for
+    /// bundleId/name/version/build. Detects installSource per the
+    /// catalog's homebrewDetection + macAppStoreDetection blocks.
+    /// Dedupes by bundleId. Returns alphabetically sorted by
+    /// `name.localizedStandardCompare`.
     func discoverInstalledApps() async -> [InstalledApp] {
         let catalog: AppLeftoversCatalog
         do {
@@ -44,7 +53,6 @@ actor AppScanner {
         let home = NSHomeDirectory()
         let roots: [URL] = [
             URL(fileURLWithPath: "/Applications"),
-            URL(fileURLWithPath: "/Applications/Utilities"),
             URL(fileURLWithPath: home).appendingPathComponent("Applications"),
         ]
 
@@ -53,15 +61,25 @@ actor AppScanner {
         let fm = FileManager.default
 
         for root in roots {
-            guard let children = try? fm.contentsOfDirectory(
+            guard let enumerator = fm.enumerator(
                 at: root,
                 includingPropertiesForKeys: nil,
-                options: [.skipsHiddenFiles]
+                options: [.skipsHiddenFiles, .skipsPackageDescendants]
             ) else {
                 continue
             }
 
-            for url in children where url.pathExtension == "app" {
+            for case let url as URL in enumerator {
+                guard url.pathExtension == "app" else {
+                    if enumerator.level >= Self.maxDiscoveryDepth {
+                        enumerator.skipDescendants()
+                    }
+                    continue
+                }
+                // Never descend into a bundle — embedded helper apps
+                // are not uninstall candidates.
+                enumerator.skipDescendants()
+
                 guard let bundle = Bundle(url: url),
                       let bundleId = bundle.bundleIdentifier else {
                     logger.warning("Skipping app with no bundleId at \(url.path, privacy: .private)")
