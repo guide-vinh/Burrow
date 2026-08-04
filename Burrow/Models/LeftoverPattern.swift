@@ -19,6 +19,11 @@ struct LeftoverPattern: Codable, Hashable {
         case prefix
         case containsBundleId
         case glob
+        /// `path` is a base directory (e.g. `~/Library/Application Support`).
+        /// The app's name is split into vendor/product word pairs and each
+        /// `base/vendor/product` that exists matches — catches data nested
+        /// under a vendor folder like `IBM/SPSS Statistics` or `Google/Chrome`.
+        case nestedName
     }
 
     /// User-visible risk class. `safe` is default-checked, `caution`

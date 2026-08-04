@@ -168,6 +168,11 @@ actor AppScanner {
         var seenPaths = Set<String>()
         var matches: [LeftoverMatch] = []
 
+        // Apps installed in a vendor subfolder of an Applications root
+        // (e.g. /Applications/IBM SPSS Statistics/) ship companion apps
+        // and support files next to the bundle — surface them first.
+        matches.append(contentsOf: installFolderMatches(for: app, seenPaths: &seenPaths))
+
         for entry in patternEntries {
             let resolved = expandPattern(
                 entry.pattern,
@@ -256,6 +261,9 @@ actor AppScanner {
 
         case .glob:
             return expandGlob(pattern.path, for: app)
+
+        case .nestedName:
+            return expandNestedName(pattern.path, for: app)
         }
     }
 
@@ -319,6 +327,136 @@ actor AppScanner {
             results.append(contentsOf: resolved)
         }
         return results
+    }
+
+    /// `.nestedName` — `path` is a base directory. Splits each app-name
+    /// form ("IBM SPSS Statistics") into vendor/product word pairs and
+    /// returns every `base/vendor/product` that exists on disk
+    /// (`IBM/SPSS Statistics`, `IBM SPSS/Statistics`, …). Catches data
+    /// keyed under a vendor folder that plain `{name}` patterns miss.
+    private func expandNestedName(_ path: String, for app: InstalledApp) -> [URL] {
+        let base = URL(fileURLWithPath: PathResolver.expand(path))
+        let fm = FileManager.default
+
+        var nameForms = [app.name]
+        let filename = app.bundleURL.deletingPathExtension().lastPathComponent
+        if filename != app.name { nameForms.append(filename) }
+
+        var results: [URL] = []
+        var seen = Set<String>()
+        for name in nameForms {
+            let words = name.split(separator: " ").map(String.init)
+            guard words.count >= 2 else { continue }
+            for split in 1..<words.count {
+                let vendor = words[0..<split].joined(separator: " ")
+                let product = words[split...].joined(separator: " ")
+                let candidate = base
+                    .appendingPathComponent(vendor)
+                    .appendingPathComponent(product)
+                let standardPath = candidate.standardizedFileURL.path
+                guard seen.insert(standardPath).inserted else { continue }
+                if fm.fileExists(atPath: standardPath) {
+                    results.append(candidate)
+                }
+            }
+        }
+        return results
+    }
+
+    // MARK: - Install-folder companions
+
+    /// When the app lives in a vendor subfolder of an Applications root
+    /// (`/Applications/IBM SPSS Statistics/IBM SPSS Statistics.app`),
+    /// its siblings are part of the same install. If every other .app
+    /// in the folder is related to this one, offer the whole folder as
+    /// a single leftover; otherwise offer only the related siblings
+    /// (e.g. `Uninstall Foo.app`) so unrelated apps are never touched.
+    private func installFolderMatches(
+        for app: InstalledApp,
+        seenPaths: inout Set<String>
+    ) -> [LeftoverMatch] {
+        let parent = app.bundleURL.deletingLastPathComponent().standardizedFileURL
+        let roots = [
+            "/Applications",
+            NSHomeDirectory() + "/Applications",
+        ].map { URL(fileURLWithPath: $0).standardizedFileURL.path }
+
+        guard !roots.contains(parent.path),
+              roots.contains(where: { parent.path.hasPrefix($0 + "/") }),
+              let children = try? FileManager.default.contentsOfDirectory(
+                  at: parent,
+                  includingPropertiesForKeys: nil,
+                  options: []
+              ) else {
+            return []
+        }
+
+        let selfPath = app.bundleURL.standardizedFileURL.path
+        let siblings = children.filter { $0.standardizedFileURL.path != selfPath }
+        let siblingApps = siblings.filter { $0.pathExtension == "app" }
+        let related = siblingApps.filter { isRelatedCompanion($0, app: app, folder: parent) }
+
+        var results: [LeftoverMatch] = []
+        if related.count == siblingApps.count {
+            // Whole folder belongs to this product. Companion runtimes
+            // (SPSS's Python/R) are worth a look before deleting →
+            // highValue; a bare folder or one with only Uninstall stubs
+            // is unambiguous → caution (default-checked).
+            let onlyStubs = siblingApps.allSatisfy {
+                $0.deletingPathExtension().lastPathComponent.lowercased().hasPrefix("uninstall")
+            }
+            let pattern = LeftoverPattern(
+                path: parent.path,
+                risk: onlyStubs ? .caution : .highValue,
+                category: "appData",
+                description: "Installation folder — includes companion apps and support files"
+            )
+            guard seenPaths.insert(parent.path).inserted else { return [] }
+            let bytes = siblings.reduce(Int64(0)) { $0 + SafeFileOps.size($1) }
+            results.append(LeftoverMatch(
+                url: parent,
+                bytes: bytes,
+                pattern: pattern,
+                isShared: false
+            ))
+        } else {
+            for url in related {
+                let standardPath = url.standardizedFileURL.path
+                guard seenPaths.insert(standardPath).inserted else { continue }
+                let pattern = LeftoverPattern(
+                    path: standardPath,
+                    risk: .caution,
+                    category: "appData",
+                    description: "Companion app installed alongside \(app.name)"
+                )
+                results.append(LeftoverMatch(
+                    url: url,
+                    bytes: SafeFileOps.size(url),
+                    pattern: pattern,
+                    isShared: false
+                ))
+            }
+        }
+        return results
+    }
+
+    /// A sibling .app counts as part of the same product if it's an
+    /// Uninstall stub or shares a meaningful word (≥3 chars) with the
+    /// app or install-folder name.
+    private func isRelatedCompanion(_ url: URL, app: InstalledApp, folder: URL) -> Bool {
+        let base = url.deletingPathExtension().lastPathComponent
+        if base.lowercased().hasPrefix("uninstall") { return true }
+        let reference = tokenize(app.name).union(tokenize(folder.lastPathComponent))
+        return !tokenize(base).isDisjoint(with: reference)
+    }
+
+    private func tokenize(_ string: String) -> Set<String> {
+        Set(
+            string.lowercased()
+                .split(whereSeparator: { !$0.isLetter && !$0.isNumber })
+                .map(String.init)
+                .filter { $0.count >= 3 }
+        )
     }
 
     // MARK: - Placeholder substitution

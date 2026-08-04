@@ -133,7 +133,15 @@ final class UninstallViewModel: ObservableObject {
         var totalBytes: Int64 = 0
         var totalItems = 0
 
-        for url in checkedURLs {
+        // Deepest paths first, so a checked install folder (which
+        // contains the .app) is trashed after its own contents and
+        // never triggers doesNotExist failures on the rest.
+        let targets = checkedURLs.sorted {
+            $0.standardizedFileURL.pathComponents.count
+                > $1.standardizedFileURL.pathComponents.count
+        }
+
+        for url in targets {
             do {
                 let bytes = permanently
                     ? try await SafeFileOps.permanentlyDelete(url, dryRun: dryRun)

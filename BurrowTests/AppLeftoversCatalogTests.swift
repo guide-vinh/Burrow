@@ -18,7 +18,7 @@ final class AppLeftoversCatalogTests: XCTestCase {
     func testBundledCatalogDecodes() throws {
         let catalog = try loadBundledCatalog()
         XCTAssertEqual(catalog.schemaVersion, 2)
-        XCTAssertEqual(catalog.userPaths.count, 36)
+        XCTAssertEqual(catalog.userPaths.count, 38)
         XCTAssertEqual(catalog.systemPaths.count, 19)
     }
 
@@ -59,7 +59,7 @@ final class AppLeftoversCatalogTests: XCTestCase {
             catalog.vendorOverrides.values.flatMap(\.paths)
         let matchTypes = Set(allPatterns.map(\.matchType))
         XCTAssertEqual(matchTypes,
-                       [.exact, .prefix, .containsBundleId, .glob],
+                       [.exact, .prefix, .containsBundleId, .glob, .nestedName],
                        "every matchType from the schema docs should appear in v2")
     }
 

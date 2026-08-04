@@ -36,12 +36,13 @@ enum SafeFileOps {
     /// Throws if `url` is in the deny-list, equals a protected user-folder
     /// root, or does not exist.
     ///
-    /// Carve-out for Phase 2 Uninstall: a `.app` bundle anywhere under
-    /// an Applications root (`/Applications`, `~/Applications`) IS
-    /// allowed even though the root is in the deny-list — vendors nest
-    /// apps in subfolders (`/Applications/Adobe …/Foo.app`). Helper
-    /// bundles nested inside another `.app`, and anything DEEPER than
-    /// the bundle itself (e.g. files inside it), remain rejected.
+    /// Carve-out for Phase 2 Uninstall: items under an Applications
+    /// root (`/Applications`, `~/Applications`) ARE allowed even though
+    /// the root is in the deny-list — vendors nest apps plus companion
+    /// files in subfolders (`/Applications/IBM SPSS Statistics/…`), and
+    /// uninstall must be able to trash those and the vendor folder
+    /// itself. The roots themselves and anything INSIDE a `.app` bundle
+    /// (other than the bundle as a whole) remain rejected.
     static func validate(_ url: URL) throws {
         let path = url.standardizedFileURL.path
 
@@ -68,12 +69,11 @@ enum SafeFileOps {
         }
     }
 
-    /// True if `path` is a `.app` bundle under an Applications root
-    /// (any folder depth) — i.e. an installed application bundle the
-    /// user can legitimately uninstall. Bundles nested inside another
-    /// `.app` (embedded helpers) are NOT allowed.
+    /// True if `path` is an uninstallable item under an Applications
+    /// root: a `.app` bundle (any folder depth), a vendor subfolder, or
+    /// a loose companion file. Anything inside a `.app` bundle — other
+    /// than the bundle as a whole — is NOT allowed.
     private static func isAllowedAppBundleChild(path: String) -> Bool {
-        guard path.hasSuffix(".app") else { return false }
         let appRoots = [
             "/Applications",
             NSHomeDirectory() + "/Applications",
@@ -81,10 +81,12 @@ enum SafeFileOps {
         guard let root = appRoots.first(where: { path.hasPrefix($0 + "/") }) else {
             return false
         }
-        // No intermediate component between the root and this bundle
-        // may itself be a bundle.
-        let intermediates = path.dropFirst(root.count + 1).split(separator: "/").dropLast()
-        return !intermediates.contains { $0.hasSuffix(".app") }
+        let components = path.dropFirst(root.count + 1).split(separator: "/")
+        guard !components.isEmpty else { return false }
+        if let bundleIndex = components.firstIndex(where: { $0.hasSuffix(".app") }) {
+            return bundleIndex == components.count - 1
+        }
+        return true
     }
 
     /// Moves `url` to the user's Trash via `NSWorkspace.recycle`. Returns

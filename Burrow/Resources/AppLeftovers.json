@@ -11,7 +11,8 @@
       "exact": "Path matches verbatim after placeholder substitution. Default when matchType is omitted. For directories, the entire directory tree is the leftover (recursive trash).",
       "prefix": "URL-ancestor match: the candidate path equals the prefix OR is a descendant directory. Lexical-prefix collisions (e.g., `foo` matching `foobar`) do NOT match.",
       "containsBundleId": "Walks the parent directory at depth 1 only; entries whose name CONTAINS the bundle ID match. Catches teamId-prefixed group containers like UBF8T346G9.com.tinyspeck.slackmacgap.",
-      "glob": "Standard glob with * wildcards expanded at scan time. * matches any characters within a path segment."
+      "glob": "Standard glob with * wildcards expanded at scan time. * matches any characters within a path segment.",
+      "nestedName": "path is a base directory. The app name is split into vendor/product word pairs and each base/vendor/product that exists matches — catches data nested under a vendor folder like IBM/SPSS Statistics or Google/Chrome. Both name forms (CFBundleName and .app filename) are tried."
     },
     "riskLevels": {
       "safe": "Pure cache or regenerable data. Default-checked.",
@@ -39,6 +40,13 @@
       "risk": "highValue",
       "category": "appData",
       "description": "Some apps use display name instead of bundle ID for Application Support"
+    },
+    {
+      "path": "~/Library/Application Support",
+      "matchType": "nestedName",
+      "risk": "highValue",
+      "category": "appData",
+      "description": "App data nested under a vendor folder (e.g. IBM/SPSS Statistics)"
     },
     {
       "path": "~/Library/Containers/{bundleId}",
@@ -103,6 +111,13 @@
       "risk": "safe",
       "category": "cache",
       "description": "Catches helper bundle caches like com.bundleId.helper"
+    },
+    {
+      "path": "~/Library/Caches",
+      "matchType": "nestedName",
+      "risk": "safe",
+      "category": "cache",
+      "description": "Caches nested under a vendor folder"
     },
     {
       "path": "~/Library/Caches/com.apple.helpd/Generated/{bundleId}*",
