@@ -14,7 +14,8 @@
         { "kind": "directoryContents", "path": "~/Library/Caches/Google/Chrome" },
         { "kind": "glob",              "path": "~/Library/Application Support/Google/Chrome/*/Cache" },
         { "kind": "glob",              "path": "~/Library/Application Support/Google/Chrome/*/Code Cache" },
-        { "kind": "glob",              "path": "~/Library/Application Support/Google/Chrome/*/GPUCache" }
+        { "kind": "glob",              "path": "~/Library/Application Support/Google/Chrome/*/GPUCache" },
+        { "kind": "glob",              "path": "~/Library/Application Support/Google/Chrome/*/Service Worker/CacheStorage" }
       ]
     },
     {
@@ -58,7 +59,8 @@
       "rules": [
         { "kind": "directoryContents", "path": "~/Library/Caches/BraveSoftware/Brave-Browser" },
         { "kind": "glob",              "path": "~/Library/Application Support/BraveSoftware/Brave-Browser/*/Cache" },
-        { "kind": "glob",              "path": "~/Library/Application Support/BraveSoftware/Brave-Browser/*/Code Cache" }
+        { "kind": "glob",              "path": "~/Library/Application Support/BraveSoftware/Brave-Browser/*/Code Cache" },
+        { "kind": "glob",              "path": "~/Library/Application Support/BraveSoftware/Brave-Browser/*/Service Worker/CacheStorage" }
       ]
     },
     {
@@ -72,7 +74,58 @@
       "requiresAppQuit": "company.thebrowser.Browser",
       "rules": [
         { "kind": "directoryContents", "path": "~/Library/Caches/company.thebrowser.Browser" },
-        { "kind": "glob",              "path": "~/Library/Application Support/Arc/User Data/*/Cache" }
+        { "kind": "glob",              "path": "~/Library/Application Support/Arc/User Data/*/Cache" },
+        { "kind": "glob",              "path": "~/Library/Application Support/Arc/User Data/*/Service Worker/CacheStorage" }
+      ]
+    },
+    {
+      "id": "browser.edge",
+      "title": "Microsoft Edge",
+      "summary": "Cache, code cache, GPU and service worker caches",
+      "group": "browser",
+      "icon": "globe",
+      "risk": "low",
+      "defaultEnabled": true,
+      "requiresAppQuit": "com.microsoft.edgemac",
+      "rules": [
+        { "kind": "directoryContents", "path": "~/Library/Caches/Microsoft Edge" },
+        { "kind": "glob",              "path": "~/Library/Application Support/Microsoft Edge/*/Cache" },
+        { "kind": "glob",              "path": "~/Library/Application Support/Microsoft Edge/*/Code Cache" },
+        { "kind": "glob",              "path": "~/Library/Application Support/Microsoft Edge/*/GPUCache" },
+        { "kind": "glob",              "path": "~/Library/Application Support/Microsoft Edge/*/Service Worker/CacheStorage" }
+      ]
+    },
+    {
+      "id": "browser.vivaldi",
+      "title": "Vivaldi",
+      "summary": "Cache, code cache, GPU and service worker caches",
+      "group": "browser",
+      "icon": "globe",
+      "risk": "low",
+      "defaultEnabled": true,
+      "requiresAppQuit": "com.vivaldi.Vivaldi",
+      "rules": [
+        { "kind": "directoryContents", "path": "~/Library/Caches/Vivaldi" },
+        { "kind": "glob",              "path": "~/Library/Application Support/Vivaldi/*/Cache" },
+        { "kind": "glob",              "path": "~/Library/Application Support/Vivaldi/*/Code Cache" },
+        { "kind": "glob",              "path": "~/Library/Application Support/Vivaldi/*/GPUCache" },
+        { "kind": "glob",              "path": "~/Library/Application Support/Vivaldi/*/Service Worker/CacheStorage" }
+      ]
+    },
+    {
+      "id": "browser.dia",
+      "title": "Dia",
+      "summary": "HTTP, code, GPU and service worker caches",
+      "group": "browser",
+      "icon": "globe",
+      "risk": "low",
+      "defaultEnabled": true,
+      "requiresAppQuit": "company.thebrowser.dia",
+      "rules": [
+        { "kind": "directoryContents", "path": "~/Library/Caches/company.thebrowser.dia" },
+        { "kind": "directoryContents", "path": "~/Library/Caches/Dia/User Data" },
+        { "kind": "glob",              "path": "~/Library/Application Support/Dia/User Data/*/GPUCache" },
+        { "kind": "glob",              "path": "~/Library/Application Support/Dia/User Data/*/Service Worker/CacheStorage" }
       ]
     },
     {
@@ -234,6 +287,20 @@
       ]
     },
     {
+      "id": "developer.gradle_daemon",
+      "title": "Gradle daemon logs",
+      "summary": "Old daemon logs, worker state and notifications; skipped if touched in the last week",
+      "group": "developer",
+      "icon": "hammer",
+      "risk": "medium",
+      "defaultEnabled": false,
+      "rules": [
+        { "kind": "directoryContents", "path": "~/.gradle/daemon", "olderThanDays": 7 },
+        { "kind": "directoryContents", "path": "~/.gradle/notifications", "olderThanDays": 7 },
+        { "kind": "directoryContents", "path": "~/.gradle/workers", "olderThanDays": 7 }
+      ]
+    },
+    {
       "id": "developer.maven_repository",
       "title": "Maven repository",
       "summary": "Maven local artifact cache; large, re-downloaded on next build",
@@ -362,6 +429,58 @@
       "defaultEnabled": true,
       "rules": [
         { "kind": "directoryContents", "path": "~/Library/Caches/com.apple.QuickLook.thumbnailcache" }
+      ]
+    },
+    {
+      "id": "system.ios_updates",
+      "title": "iOS device updates",
+      "summary": "Downloaded iPhone/iPad/iPod software updates; re-downloaded if needed",
+      "group": "system",
+      "icon": "iphone",
+      "risk": "low",
+      "defaultEnabled": true,
+      "rules": [
+        { "kind": "directoryContents", "path": "~/Library/iTunes/iPhone Software Updates" },
+        { "kind": "directoryContents", "path": "~/Library/iTunes/iPad Software Updates" },
+        { "kind": "directoryContents", "path": "~/Library/iTunes/iPod Software Updates" }
+      ]
+    },
+    {
+      "id": "system.crash_reports",
+      "title": "Crash reports",
+      "summary": "Crash report state older than 14 days",
+      "group": "system",
+      "icon": "alert-triangle",
+      "risk": "low",
+      "defaultEnabled": true,
+      "rules": [
+        { "kind": "directoryContents", "path": "~/Library/Application Support/CrashReporter", "olderThanDays": 14 }
+      ]
+    },
+    {
+      "id": "app.mail_downloads",
+      "title": "Mail attachment copies",
+      "summary": "Opened-attachment copies; originals stay in Mail. Quit Mail first",
+      "group": "app",
+      "icon": "message",
+      "risk": "high",
+      "defaultEnabled": false,
+      "requiresAppQuit": "com.apple.mail",
+      "rules": [
+        { "kind": "directoryContents", "path": "~/Library/Mail Downloads" },
+        { "kind": "directoryContents", "path": "~/Library/Containers/com.apple.mail/Data/Library/Mail Downloads" }
+      ]
+    },
+    {
+      "id": "app.jianying",
+      "title": "JianyingPro (CapCut CN)",
+      "summary": "Generated video cache; re-rendered when a project is reopened",
+      "group": "app",
+      "icon": "video",
+      "risk": "medium",
+      "defaultEnabled": false,
+      "rules": [
+        { "kind": "directoryContents", "path": "~/Movies/JianyingPro/User Data/Cache" }
       ]
     },
     {
@@ -804,7 +923,11 @@
       "risk": "medium",
       "defaultEnabled": false,
       "rules": [
-        { "kind": "directoryContents", "path": "~/.conda/pkgs" }
+        { "kind": "directoryContents", "path": "~/.conda/pkgs" },
+        { "kind": "directoryContents", "path": "~/anaconda3/pkgs" },
+        { "kind": "directoryContents", "path": "~/miniconda3/pkgs" },
+        { "kind": "directoryContents", "path": "~/miniforge3/pkgs" },
+        { "kind": "directoryContents", "path": "~/mambaforge/pkgs" }
       ]
     },
     {
