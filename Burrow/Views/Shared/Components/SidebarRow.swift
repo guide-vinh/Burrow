@@ -22,6 +22,9 @@ struct SidebarRow: View {
             .frame(height: 36)
             .background(isActive ? Color.surfaceTertiary : Color.clear)
             .clipShape(RoundedRectangle(cornerRadius: Radius.md, style: .continuous))
+            // Transparent regions aren't hit-testable with .plain buttons;
+            // without this only the icon + label accept clicks.
+            .contentShape(RoundedRectangle(cornerRadius: Radius.md, style: .continuous))
         }
         .buttonStyle(.plain)
     }
