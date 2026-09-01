@@ -21,9 +21,19 @@ struct BurrowApp: App {
                 }
                 .disabled(!updater.canCheckForUpdates)
             }
-            CommandGroup(after: .help) {
+            // Replace (not append to) the default Help group so macOS's
+            // "Burrow Help" item — which points at a non-existent help book
+            // and shows "Help isn't available" — is removed.
+            CommandGroup(replacing: .help) {
                 Button("Burrow on GitHub") {
                     NSWorkspace.shared.open(Self.githubURL)
+                }
+                Divider()
+                Button("Report an Issue…") {
+                    IssueReporter.open(.bug)
+                }
+                Button("Request a Feature…") {
+                    IssueReporter.open(.feature)
                 }
             }
         }
