@@ -191,6 +191,12 @@ final class UninstallViewModel: ObservableObject {
 
     // MARK: - Banner
 
+    /// Clears the last error so its banner dismisses. Called from the UI's
+    /// close button on the error banner.
+    func dismissError() {
+        lastError = nil
+    }
+
     func dismissPreviewBanner() {
         bannerDismissTask?.cancel()
         bannerDismissTask = nil

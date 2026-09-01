@@ -7,6 +7,14 @@ enum SafeFileError: Error {
     case trashFailed(URL, underlying: Error)
 }
 
+/// Carries the human-readable reason a Finder-assisted trash failed (e.g.
+/// the user cancelled the admin authentication dialog) so the UI can show
+/// it verbatim.
+struct FinderTrashError: LocalizedError {
+    let message: String
+    var errorDescription: String? { message }
+}
+
 /// The single point where Burrow mutates the file system. Every destructive
 /// operation passes through `validate(_:)` first.
 enum SafeFileOps {
@@ -97,17 +105,72 @@ enum SafeFileOps {
         try validate(url)
         let bytes = size(url)
         if !dryRun {
-            try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
-                NSWorkspace.shared.recycle([url]) { _, error in
-                    if let error {
-                        cont.resume(throwing: SafeFileError.trashFailed(url, underlying: error))
-                    } else {
-                        cont.resume()
-                    }
-                }
+            do {
+                try await recycle(url)
+            } catch {
+                // `recycle` was denied — typically a root-owned app placed by
+                // an installer package that the current user can't move to the
+                // Trash. Fall back to Finder, which prompts for admin rights
+                // and still lands the item in the Trash (reversible). Throws
+                // if Finder also fails (e.g. the user cancels the prompt).
+                try await MainActor.run { try trashViaFinder(url) }
             }
         }
         return bytes
+    }
+
+    /// Moves `url` to the Trash via `NSWorkspace.recycle`. Resumes throwing
+    /// on any failure so `trash` can decide whether to fall back to Finder.
+    private static func recycle(_ url: URL) async throws {
+        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+            NSWorkspace.shared.recycle([url]) { _, error in
+                if let error {
+                    cont.resume(throwing: SafeFileError.trashFailed(url, underlying: error))
+                } else {
+                    cont.resume()
+                }
+            }
+        }
+    }
+
+    /// Asks Finder (via Apple Events) to move `url` to the Trash. Finder
+    /// presents the standard admin authentication dialog when elevated
+    /// rights are needed, so this succeeds for root-owned installer apps
+    /// that `recycle` can't touch — and the item still goes to the Trash,
+    /// preserving reversibility. Requires the Automation (Apple Events)
+    /// permission plus `NSAppleEventsUsageDescription` in Info.plist.
+    @MainActor
+    private static func trashViaFinder(_ url: URL) throws {
+        // Escape for embedding in an AppleScript string literal.
+        let escaped = url.standardizedFileURL.path
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+        let source = "tell application \"Finder\" to delete (POSIX file \"\(escaped)\")"
+
+        guard let script = NSAppleScript(source: source) else {
+            throw SafeFileError.trashFailed(
+                url,
+                underlying: FinderTrashError(message: "Couldn't build the Finder request.")
+            )
+        }
+
+        var errorInfo: NSDictionary?
+        script.executeAndReturnError(&errorInfo)
+
+        if let errorInfo {
+            let message = errorInfo[NSAppleScript.errorMessage] as? String
+                ?? "Finder couldn't move the item to the Trash."
+            throw SafeFileError.trashFailed(url, underlying: FinderTrashError(message: message))
+        }
+
+        // The AppleScript can report success while the item survives (e.g. the
+        // auth dialog was dismissed). Verify the move actually happened.
+        if FileManager.default.fileExists(atPath: url.standardizedFileURL.path) {
+            throw SafeFileError.trashFailed(
+                url,
+                underlying: FinderTrashError(message: "The item is still in place — administrator access may have been denied.")
+            )
+        }
     }
 
     /// Permanent deletion, bypassing the Trash. Only reachable from the

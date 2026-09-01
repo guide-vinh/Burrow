@@ -22,6 +22,8 @@
 	<string>18</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>Burrow asks Finder to move apps to the Trash when they require administrator access to uninstall.</string>
 	<key>NSHumanReadableCopyright</key>
 	<string>Copyright © 2026 Burrow. All rights reserved.</string>
 	<key>NSMainStoryboardFile</key>
