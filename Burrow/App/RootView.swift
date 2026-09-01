@@ -62,7 +62,7 @@ struct RootView: View {
     private var brandHeader: some View {
         HStack(spacing: Spacing.md) {
             BrandLogo()
-            Text("Burrow")
+            Text(appName)
                 .font(.titleM)
                 .foregroundStyle(Color.fgPrimary)
             Spacer(minLength: 0)
@@ -106,6 +106,16 @@ struct RootView: View {
     /// `CFBundleShortVersionString` from Info.plist; falls back to "—".
     private var appVersion: String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—"
+    }
+
+    /// User-facing app name. `CFBundleDisplayName` carries the per-configuration
+    /// name ("Burrow Dev" for Debug builds) so this shows the dev suffix
+    /// automatically; falls back to `CFBundleName`, then a literal.
+    private var appName: String {
+        let info = Bundle.main.infoDictionary
+        return info?["CFBundleDisplayName"] as? String
+            ?? info?["CFBundleName"] as? String
+            ?? "Burrow"
     }
 
     /// Opens the SwiftUI `Settings` scene. macOS 14 has a first-class
