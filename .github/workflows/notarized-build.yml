@@ -1,0 +1,145 @@
+# Archive → Developer-ID-sign → notarize → staple, on a GitHub macOS runner.
+# Mirrors steps 1–6 of scripts/release.sh; does NOT bump the version, sign
+# for Sparkle, touch the appcast, or publish a release. The notarized zip is
+# uploaded as a workflow artifact.
+#
+# Required repository secrets:
+#   DEVELOPER_ID_P12_BASE64    base64 of the "Developer ID Application" .p12 (cert + private key)
+#   DEVELOPER_ID_P12_PASSWORD  password of that .p12
+#   NOTARY_APPLE_ID            Apple ID used for notarization
+#   NOTARY_APP_PASSWORD        app-specific password for that Apple ID
+
+name: Notarized build
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: notarized-build-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 60
+    env:
+      XCODE_APP: /Applications/Xcode_26.6.app
+      SCHEME: Burrow
+      TEAM_ID: T4XT6XZ2WT
+      OUT_DIR: build/ci
+
+    steps:
+      - name: Check secrets
+        env:
+          DEVELOPER_ID_P12_BASE64: ${{ secrets.DEVELOPER_ID_P12_BASE64 }}
+          DEVELOPER_ID_P12_PASSWORD: ${{ secrets.DEVELOPER_ID_P12_PASSWORD }}
+          NOTARY_APPLE_ID: ${{ secrets.NOTARY_APPLE_ID }}
+          NOTARY_APP_PASSWORD: ${{ secrets.NOTARY_APP_PASSWORD }}
+        run: |
+          missing=0
+          for name in DEVELOPER_ID_P12_BASE64 DEVELOPER_ID_P12_PASSWORD NOTARY_APPLE_ID NOTARY_APP_PASSWORD; do
+            if [ -z "${!name}" ]; then echo "::error::Missing repository secret $name"; missing=1; fi
+          done
+          exit "$missing"
+
+      - uses: actions/checkout@v7
+
+      - name: Select Xcode
+        run: |
+          sudo xcode-select -s "$XCODE_APP"
+          xcodebuild -version
+
+      # Package.resolved pins Sparkle by its SSH URL; the runner has no SSH key.
+      - name: Fetch packages over HTTPS
+        run: git config --global url."https://github.com/".insteadOf "git@github.com:"
+
+      - name: Read version
+        run: |
+          VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" Burrow/Info.plist)
+          BUILD=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" Burrow/Info.plist)
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "ARTIFACT=Burrow-$VERSION-build$BUILD-${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+
+      - name: Import Developer ID certificate
+        env:
+          P12_BASE64: ${{ secrets.DEVELOPER_ID_P12_BASE64 }}
+          P12_PASSWORD: ${{ secrets.DEVELOPER_ID_P12_PASSWORD }}
+        run: |
+          KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
+          KEYCHAIN_PASSWORD=$(uuidgen)
+          echo "KEYCHAIN=$KEYCHAIN" >> "$GITHUB_ENV"
+
+          printf '%s' "$P12_BASE64" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" -f pkcs12 \
+            -P "$P12_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+          rm -f "$RUNNER_TEMP/cert.p12"
+
+          # Intermediates, in case the runner image lacks them.
+          for ca in DeveloperIDCA DeveloperIDG2CA; do
+            curl -fsSL "https://www.apple.com/certificateauthority/$ca.cer" -o "$RUNNER_TEMP/$ca.cer"
+            security import "$RUNNER_TEMP/$ca.cer" -k "$KEYCHAIN" || true
+          done
+
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" > /dev/null
+          read -r -a EXISTING <<< "$(security list-keychains -d user | tr -d '"' | xargs)"
+          security list-keychains -d user -s "$KEYCHAIN" "${EXISTING[@]}"
+          security find-identity -v -p codesigning "$KEYCHAIN"
+
+      - name: Archive (Release, Developer ID)
+        run: |
+          xcodebuild -scheme "$SCHEME" -configuration Release \
+            -destination 'generic/platform=macOS' \
+            -archivePath "$OUT_DIR/Burrow.xcarchive" \
+            -scmProvider system \
+            OTHER_CODE_SIGN_FLAGS="--keychain $KEYCHAIN" \
+            archive
+
+      - name: Export
+        run: |
+          xcodebuild -exportArchive \
+            -archivePath "$OUT_DIR/Burrow.xcarchive" \
+            -exportOptionsPlist scripts/ExportOptions.plist \
+            -exportPath "$OUT_DIR/export"
+          codesign --verify --deep --strict --verbose=2 "$OUT_DIR/export/Burrow.app"
+
+      - name: Notarize
+        env:
+          NOTARY_APPLE_ID: ${{ secrets.NOTARY_APPLE_ID }}
+          NOTARY_APP_PASSWORD: ${{ secrets.NOTARY_APP_PASSWORD }}
+        run: |
+          ditto -c -k --keepParent "$OUT_DIR/export/Burrow.app" "$OUT_DIR/notarize.zip"
+          RESULT=$(xcrun notarytool submit "$OUT_DIR/notarize.zip" \
+            --apple-id "$NOTARY_APPLE_ID" --password "$NOTARY_APP_PASSWORD" --team-id "$TEAM_ID" \
+            --wait --timeout 30m --output-format json)
+          echo "$RESULT"
+          if [ "$(jq -r .status <<<"$RESULT")" != "Accepted" ]; then
+            xcrun notarytool log "$(jq -r .id <<<"$RESULT")" \
+              --apple-id "$NOTARY_APPLE_ID" --password "$NOTARY_APP_PASSWORD" --team-id "$TEAM_ID" || true
+            exit 1
+          fi
+
+      - name: Staple and verify
+        run: |
+          APP="$OUT_DIR/export/Burrow.app"
+          xcrun stapler staple "$APP"
+          xcrun stapler validate "$APP"
+          spctl --assess --type execute --verbose=4 "$APP"
+          ditto -c -k --keepParent "$APP" "$OUT_DIR/$ARTIFACT.zip"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ env.ARTIFACT }}
+          path: ${{ env.OUT_DIR }}/${{ env.ARTIFACT }}.zip
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Remove signing keychain
+        if: always()
+        run: |
+          if [ -n "${KEYCHAIN:-}" ]; then security delete-keychain "$KEYCHAIN" || true; fi
