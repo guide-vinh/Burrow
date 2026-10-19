@@ -13,10 +13,6 @@ name: Notarized build
 
 on:
   workflow_dispatch:
-  # TEMP: lets this branch verify the workflow before it reaches main
-  # (workflow_dispatch only works from the default branch). Remove before merge.
-  push:
-    branches: [ci/github-actions]
 
 permissions:
   contents: read
