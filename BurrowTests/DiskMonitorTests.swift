@@ -83,17 +83,8 @@ final class DiskMonitorTests: XCTestCase {
 
     // MARK: - Validation
 
-    func testParseThreshold() throws {
-        XCTAssertEqual(try DiskMonitorSettings.parseThreshold("7.5"), 7.5)
-        XCTAssertEqual(try DiskMonitorSettings.parseThreshold("7,5"), 7.5)
-        XCTAssertEqual(try DiskMonitorSettings.parseThreshold(" 12 % "), 12)
-        XCTAssertEqual(try DiskMonitorSettings.parseThreshold("0"), 0)
-        XCTAssertEqual(try DiskMonitorSettings.parseThreshold("100"), 100)
-        XCTAssertThrowsError(try DiskMonitorSettings.parseThreshold("101"))
-        XCTAssertThrowsError(try DiskMonitorSettings.parseThreshold("-1"))
-        XCTAssertThrowsError(try DiskMonitorSettings.parseThreshold("abc"))
-        XCTAssertThrowsError(try DiskMonitorSettings.parseThreshold("nan"))
-        XCTAssertThrowsError(try DiskMonitorSettings.parseThreshold("inf"))
+    func testThresholdPresetsAreFivePercentStepsToFifty() {
+        XCTAssertEqual(DiskMonitorSettings.thresholdPresets, [5, 10, 15, 20, 25, 30, 35, 40, 45, 50])
     }
 
     func testParseChannel() throws {
@@ -143,6 +134,85 @@ final class DiskMonitorTests: XCTestCase {
         XCTAssertThrowsError(try DiskMonitorSettings.parseMentions("U0123, C0123"))
         XCTAssertThrowsError(try DiskMonitorSettings.parseMentions("u0123abcd"))
         XCTAssertThrowsError(try DiskMonitorSettings.parseMentions("U1"))
+    }
+
+    func testIntervalPresetsGoUpToADay() {
+        XCTAssertEqual(DiskMonitorSettings.intervalPresets, [15, 30, 60, 180, 360, 720, 1440])
+        XCTAssertEqual(DiskMonitorSettings.intervalPresets, DiskMonitorSettings.intervalPresets.sorted())
+    }
+
+    func testNextRunForIntervalAndDailySchedules() throws {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = try XCTUnwrap(TimeZone(identifier: "Asia/Ho_Chi_Minh"))
+        func at(_ day: Int, _ hour: Int, _ minute: Int) -> Date {
+            cal.date(from: DateComponents(year: 2026, month: 10, day: day, hour: hour, minute: minute))!
+        }
+        var s = DiskMonitorSettings()
+        s.intervalMinutes = 60
+        XCTAssertEqual(s.nextRun(after: at(20, 10, 0), calendar: cal), at(20, 11, 0))
+
+        s.schedule = .daily
+        s.dailyMinute = 2 * 60   // 02:00
+        XCTAssertEqual(s.nextRun(after: at(20, 1, 30), calendar: cal), at(20, 2, 0), "later today")
+        XCTAssertEqual(s.nextRun(after: at(20, 10, 0), calendar: cal), at(21, 2, 0), "already passed: tomorrow")
+        XCTAssertEqual(s.nextRun(after: at(20, 2, 0), calendar: cal), at(21, 2, 0), "exactly now: next day")
+        s.dailyMinute = 23 * 60 + 59
+        XCTAssertEqual(s.nextRun(after: at(20, 23, 0), calendar: cal), at(20, 23, 59))
+    }
+
+    func testDailyRunIsOncePerDayAcrossDST() throws {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = try XCTUnwrap(TimeZone(identifier: "America/New_York"))
+        var s = DiskMonitorSettings()
+        s.schedule = .daily
+
+        // Fall back, 2026-11-01: 01:30 happens twice. After the first run,
+        // the next one is the following day, not an hour later.
+        s.dailyMinute = 90
+        let firstRun = try XCTUnwrap(s.nextRun(after: cal.date(from: DateComponents(year: 2026, month: 11, day: 1, hour: 0))!, calendar: cal))
+        let next = s.nextRun(after: firstRun.addingTimeInterval(1), calendar: cal)
+        XCTAssertEqual(cal.component(.day, from: next), 2)
+        XCTAssertGreaterThan(next.timeIntervalSince(firstRun), 23 * 3600)
+
+        // Spring forward, 2026-03-08: 02:30 doesn't exist → runs at 03:00.
+        s.dailyMinute = 150
+        let spring = s.nextRun(after: cal.date(from: DateComponents(year: 2026, month: 3, day: 8, hour: 0))!, calendar: cal)
+        XCTAssertEqual(cal.dateComponents([.day, .hour, .minute], from: spring), DateComponents(day: 8, hour: 3, minute: 0))
+    }
+
+    func testResetKeepsMonitoringAndSlack() {
+        var s = DiskMonitorSettings()
+        s.enabled = true
+        s.slackChannel = "C0123ABCD"
+        s.slackChannelLink = "https://guide.slack.com/archives/C0123ABCD"
+        s.slackMentions = ["U01"]
+        s.thresholdPercent = 40
+        s.schedule = .daily
+        s.dailyMinute = 17 * 60
+        s.intervalMinutes = 720
+        s.paths = ["/", "/Volumes/B"]
+        s.machineName = "Build Mac"
+        s.percentDisplay = .free
+        s.showInMenuBar = false
+        s.alertOnly = false
+        s.includeTopFolders = false
+
+        let r = s.resetToDefaults()
+        var expected = DiskMonitorSettings()
+        expected.enabled = true
+        expected.slackChannel = "C0123ABCD"
+        expected.slackChannelLink = "https://guide.slack.com/archives/C0123ABCD"
+        expected.slackMentions = ["U01"]
+        expected.alertOnly = false            // Slack section: kept
+        expected.includeTopFolders = false
+        XCTAssertEqual(r, expected)
+    }
+
+    func testScheduleDecodesWithDefaults() throws {
+        let older = #"{"enabled":true,"intervalMinutes":60}"#
+        let s = try JSONDecoder().decode(DiskMonitorSettings.self, from: Data(older.utf8))
+        XCTAssertEqual(s.schedule, .interval)
+        XCTAssertEqual(s.dailyMinute, 5 * 60)   // 05:00
     }
 
     func testParsePathsDedupesAndFallsBack() {
@@ -223,11 +293,11 @@ final class DiskMonitorTests: XCTestCase {
         XCTAssertEqual(msg.text, ":warning: Low disk space - &lt;!channel&gt; &amp; co")
     }
 
-    func testTopSectionWhenScanTimedOutOrEmpty() throws {
+    func testTopSectionWhenScanCouldNotRunOrIsEmpty() throws {
         let low = Reading(path: "/", total: 100 * gb, free: 1 * gb, failed: false)
         let timedOut = DiskMonitorReport.message(host: "M", readings: [low], threshold: 10,
                                                  topFolders: nil, includeTopSection: true, mentions: [])
-        XCTAssertTrue(try XCTUnwrap(timedOut.attachments.first).blocks[1].mrkdwn.contains("didn't finish"))
+        XCTAssertTrue(try XCTUnwrap(timedOut.attachments.first).blocks[1].mrkdwn.contains("couldn't be measured"))
         XCTAssertEqual(DiskMonitorReport.formatTop(.init(folders: [])), "*Top space consumers*\nNothing measurable found.")
     }
 
@@ -307,27 +377,115 @@ final class DiskMonitorTests: XCTestCase {
         XCTAssertLessThan(Date().timeIntervalSince(again), 1)
     }
 
-    func testWithTimeoutCancelsSlowWork() async {
+    func testWithDeadlineKeepsWhatWasDoneWhenTimeRunsOut() async {
         let start = Date()
-        let result: Int? = await DiskMonitorReport.withTimeout(0.1) {
+        // Work that, when cancelled, still returns what it has (like a
+        // terminated du returning the folders it finished).
+        let result = await DiskMonitorReport.withDeadline(0.1) { () -> String in
             while !Task.isCancelled { try? await Task.sleep(nanoseconds: 10_000_000) }
-            return 1
+            return "partial"
         }
-        XCTAssertNil(result)
+        XCTAssertEqual(result, "partial")
         XCTAssertLessThan(Date().timeIntervalSince(start), 2)
-        let fast: Int? = await DiskMonitorReport.withTimeout(5) { 7 }
-        XCTAssertEqual(fast, 7)
+        let fast = await DiskMonitorReport.withDeadline(5) { "done" }
+        XCTAssertEqual(fast, "done")
     }
 
-    func testCancellableDuIsTerminated() async {
-        // /System/Library takes many seconds to walk and needs no privacy
-        // permission; a cancelled cancellable scan must return right away.
+    private func makeTree(_ layout: [String: Int]) throws -> URL {
+        let root = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("burrow-tree-\(UUID().uuidString)")
+        for (relative, bytes) in layout {
+            let file = root.appendingPathComponent(relative)
+            try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try Data(count: bytes).write(to: file)
+        }
+        return root.standardizedFileURL
+    }
+
+    func testScanTreeMeasuresTwoLevelsInOneWalk() async throws {
+        let root = try makeTree([
+            "Big/a/file": 400_000, "Big/b/file": 200_000, "Big/loose": 100_000,
+            "Small/x/file": 10_000, "top-loose": 50_000,
+        ])
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let tree = await DiskUsageScanner.scanTree(root, depth: 2)
+        XCTAssertTrue(tree.complete)
+        for sub in ["", "/Big", "/Big/a", "/Big/b", "/Small", "/Small/x"] {
+            XCTAssertNotNil(tree.sizes[root.path + sub], sub)
+        }
+        XCTAssertGreaterThan(tree.sizes[root.path + "/Big/a"] ?? 0, tree.sizes[root.path + "/Big/b"] ?? 0)
+
+        let folders = DiskMonitorReport.assemble(tree.sizes, home: root.path, limit: 10, expand: 1)
+        let paths = folders.map(\.path)
+        XCTAssertEqual(Set(paths), Set([root.path + "/Big/a", root.path + "/Big/b", root.path + "/Big/*",
+                                        root.path + "/Small", root.path + "/*"]))
+    }
+
+    func testScanTreeWithLargeOutputDoesNotBlock() async throws {
+        // ~3000 folders at depth 2: more output than a pipe buffer holds,
+        // which deadlocks if du's output is only read after it exits.
+        var layout: [String: Int] = [:]
+        for i in 0..<30 { for j in 0..<100 { layout["folder-with-a-long-name-\(i)/sub-\(j)-padding-padding/f"] = 1 } }
+        let root = try makeTree(layout)
+        defer { try? FileManager.default.removeItem(at: root) }
+
         let start = Date()
-        let task = Task { await DiskUsageScanner.scan(URL(fileURLWithPath: "/System/Library"), excluding: [], cancellable: true) }
-        try? await Task.sleep(nanoseconds: 200_000_000)
+        let tree = await DiskMonitorReport.withDeadline(30) { await DiskUsageScanner.scanTree(root, depth: 2) }
+        XCTAssertTrue(tree.complete)
+        XCTAssertEqual(tree.sizes.count, 1 + 30 + 3000)
+        XCTAssertLessThan(Date().timeIntervalSince(start), 25)
+    }
+
+    func testScanTreeStoppedEarlyIsPartialAndQuick() async {
+        // /System/Library takes many seconds to walk and needs no privacy
+        // permission; a cancelled walk must return right away, marked partial.
+        let start = Date()
+        let task = Task { await DiskUsageScanner.scanTree(URL(fileURLWithPath: "/System/Library"), depth: 2) }
+        try? await Task.sleep(nanoseconds: 50_000_000)
         task.cancel()
-        _ = await task.value
+        let tree = await task.value
+        XCTAssertFalse(tree.complete)
+        XCTAssertFalse(tree.failed)
         XCTAssertLessThan(Date().timeIntervalSince(start), 3)
+    }
+
+    func testParseSizesSkipsBrokenLines() {
+        let sizes = DiskUsageScanner.parseSizes("10\t/a\n20\t/a/b\nnot a line\n\t/c\n")
+        XCTAssertEqual(sizes, ["/a": Int64(10 * 1024), "/a/b": Int64(20 * 1024)])
+    }
+
+    func testAssembleFromAStoppedWalk() {
+        let home = "/Users/a"
+        // Stopped mid-walk: neither ~ nor ~/Library got a total, but some of
+        // Library's subfolders and all of ~/projects did.
+        let sizes: [String: Int64] = [
+            "/Users/a/projects": 30 * gb, "/Users/a/projects/app": 25 * gb,
+            "/Users/a/Library/Caches": 12 * gb, "/Users/a/Library/Developer": 40 * gb,
+            "/Users/a/Pictures": 2 * gb,
+        ]
+        let folders = DiskMonitorReport.assemble(sizes, home: home, limit: 10, expand: 1)
+        let byPath = Dictionary(uniqueKeysWithValues: folders.map { ($0.path, $0.bytes) })
+        XCTAssertEqual(byPath["/Users/a/Library/Developer"], 40 * gb)   // unfinished parent → its children
+        XCTAssertEqual(byPath["/Users/a/Library/Caches"], 12 * gb)
+        XCTAssertEqual(byPath["/Users/a/projects/app"], 25 * gb)         // biggest finished → expanded
+        XCTAssertEqual(byPath["/Users/a/projects/*"], 5 * gb)
+        XCTAssertEqual(byPath["/Users/a/Pictures"], 2 * gb)
+        XCTAssertNil(byPath["/Users/a/*"], "no home total, so no loose-files row")
+        XCTAssertNil(byPath["/Users/a/Library"])
+    }
+
+    func testRankingIsStableOnTies() {
+        let a = DiskMonitorReport.Folder(path: "/b", bytes: gb)
+        let b = DiskMonitorReport.Folder(path: "/a", bytes: gb)
+        XCTAssertEqual(DiskMonitorReport.rank([a, b], limit: 2).map(\.path), ["/a", "/b"])
+        XCTAssertEqual(DiskMonitorReport.rank([b, a], limit: 2).map(\.path), ["/a", "/b"])
+    }
+
+    func testPartialListIsLabelled() {
+        let text = DiskMonitorReport.formatTop(.init(folders: [.init(path: "/x", bytes: gb)], stoppedAfter: 300))
+        XCTAssertTrue(text.contains("Scan stopped after 5 min"))
+        XCTAssertFalse(DiskMonitorReport.formatTop(.init(folders: [.init(path: "/x", bytes: gb)])).contains("Scan stopped"))
     }
 
     // MARK: - check()
@@ -346,6 +504,7 @@ final class DiskMonitorTests: XCTestCase {
         var free: [String: Int64] = [:]
         var postDelay: UInt64 = 0
         var scanDelay: UInt64 = 0
+        var partialScan = false
         var readDelay: UInt64 = 0
         var reads = 0
         var now = Date()
@@ -389,7 +548,7 @@ final class DiskMonitorTests: XCTestCase {
         deps.scanTopFolders = {
             spy.scans += 1
             if spy.scanDelay > 0 { try? await Task.sleep(nanoseconds: spy.scanDelay) }
-            return .init(folders: [])
+            return .init(folders: [], stoppedAfter: spy.partialScan ? 300 : nil)
         }
         deps.post = { msg, token, channel in
             if spy.postDelay > 0 { try await Task.sleep(nanoseconds: spy.postDelay) }
@@ -545,6 +704,19 @@ final class DiskMonitorTests: XCTestCase {
     }
 
     @MainActor
+    func testPartialTopFoldersAreNotCached() async throws {
+        let spy = Spy()
+        spy.free["/"] = 5 * gb
+        spy.partialScan = true
+        let (vm, cleanup) = try makeVM(spy) { _ in }
+        defer { cleanup() }
+
+        await vm.check()
+        await vm.check()
+        XCTAssertEqual(spy.scans, 2, "a partial list should be retried, not reused")
+    }
+
+    @MainActor
     func testReportEveryCheckWithoutTopFoldersWhenNotAlertOnly() async throws {
         let spy = Spy()
         let (vm, cleanup) = try makeVM(spy) { $0.alertOnly = false }
@@ -665,6 +837,45 @@ final class DiskMonitorTests: XCTestCase {
         await waitUntil { spy.posts.count == 2 }
 
         XCTAssertEqual(spy.posts.count, 2)
+        vm.settings.enabled = false
+    }
+
+    @MainActor
+    func testDailyScheduleWaitsForItsTime() async throws {
+        let spy = Spy()
+        spy.free["/"] = 5 * gb
+        let (vm, cleanup) = try makeVM(spy) { $0.schedule = .daily; $0.alertOnly = false }
+        defer { cleanup() }
+
+        vm.settings.enabled = true
+        await waitUntil { vm.nextCheck != nil }
+        await settle()
+        XCTAssertTrue(spy.posts.isEmpty, "enabling a daily schedule must not check right away")
+
+        vm.settings.thresholdPercent = 30   // no immediate recheck either
+        await settle()
+        XCTAssertTrue(spy.posts.isEmpty)
+
+        // The daily time arrives (by wall clock): one check.
+        spy.now = try XCTUnwrap(vm.nextCheck).addingTimeInterval(1)
+        await waitUntil { spy.posts.count == 1 }
+        XCTAssertEqual(spy.posts.count, 1)
+        XCTAssertGreaterThan(try XCTUnwrap(vm.nextCheck), spy.now, "next run moves to the following day")
+        vm.settings.enabled = false
+    }
+
+    @MainActor
+    func testMissedDailyCheckRunsOnWake() async throws {
+        let spy = Spy()
+        let (vm, cleanup) = try makeVM(spy) { $0.schedule = .daily; $0.alertOnly = false }
+        defer { cleanup() }
+
+        vm.settings.enabled = true
+        await waitUntil { vm.nextCheck != nil }
+        let due = try XCTUnwrap(vm.nextCheck)
+        vm.handleWake(now: due.addingTimeInterval(3600))   // asleep at the daily time
+        await waitUntil { spy.posts.count == 1 }
+        XCTAssertEqual(spy.posts.count, 1)
         vm.settings.enabled = false
     }
 

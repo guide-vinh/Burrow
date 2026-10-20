@@ -46,10 +46,13 @@ final class DiskMonitorViewModel: ObservableObject {
         didSet {
             guard settings != oldValue else { return }
             settings.save(to: defaults)
-            if settings.enabled != oldValue.enabled || settings.intervalMinutes != oldValue.intervalMinutes {
+            if settings.enabled != oldValue.enabled || settings.intervalMinutes != oldValue.intervalMinutes
+                || settings.schedule != oldValue.schedule || settings.dailyMinute != oldValue.dailyMinute {
                 reschedule()
-            } else if settings.enabled,
+            } else if settings.enabled, settings.schedule == .interval,
                       settings.thresholdPercent != oldValue.thresholdPercent || settings.paths != oldValue.paths {
+                // Not on a daily schedule: the user chose when checks (and
+                // Slack posts) happen, e.g. only at night.
                 recheckSoon()
             }
         }
@@ -112,13 +115,17 @@ final class DiskMonitorViewModel: ObservableObject {
     }
 
     /// The timer notices an overdue check within one slice; on wake, run it
-    /// right away and restart the interval from here.
+    /// right away (also a daily check missed while asleep) and restart the
+    /// schedule from here.
     func handleWake(now: Date = Date()) {
         guard settings.enabled, let next = nextCheck, now >= next else { return }
-        reschedule()
+        reschedule(checkNow: true)
     }
 
-    private func reschedule() {
+    /// Restarts the timer. By default an interval schedule checks at once and
+    /// a daily one waits for its time, so enabling it at noon doesn't post.
+    private func reschedule(checkNow: Bool? = nil) {
+        let checkFirst = checkNow ?? (settings.schedule == .interval)
         generation += 1
         loop?.cancel()
         loop = nil
@@ -145,18 +152,23 @@ final class DiskMonitorViewModel: ObservableObject {
             let granted = await self.deps.authorize()
             // The hint reflects the real setting, not a failed request.
             await self.refreshNotificationStatus()
-            if granted && self.notificationPending && self.settings.enabled { self.recheckSoon() }
+            // Not on a daily schedule: a re-check there would post outside
+            // the chosen time; the held-back alert waits for the next run.
+            if granted && self.notificationPending && self.settings.enabled && self.settings.schedule == .interval {
+                self.recheckSoon()
+            }
         }
         loop = Task { [weak self] in
+            var runNow = checkFirst
             while !Task.isCancelled {
                 let slice: TimeInterval
                 do {
                     guard let self else { return }
                     // Unstructured, so cancelling the loop (interval change)
                     // never cancels a Slack post that's already in flight.
-                    Task { await self.check() }
-                    let minutes = max(1, self.settings.intervalMinutes)
-                    self.nextCheck = self.deps.now().addingTimeInterval(TimeInterval(minutes * 60))
+                    if runNow { Task { await self.check() } }
+                    runNow = true
+                    self.nextCheck = self.settings.nextRun(after: self.deps.now())
                     slice = self.timerSlice
                 }
                 // Wait until `nextCheck` by wall clock, in short slices: one
@@ -280,8 +292,10 @@ final class DiskMonitorViewModel: ObservableObject {
             return cache.top
         }
         let top = await deps.scanTopFolders()
-        // A stale check (monitor reset meanwhile) must not refill the cache.
-        if let top, gen == generation { topFoldersCache = (deps.now(), alerting, top) }
+        // A stale check (monitor reset meanwhile) must not refill the cache,
+        // and a partial list (walk hit its time limit) isn't worth keeping:
+        // the next check should try the full walk again.
+        if let top, !top.partial, gen == generation { topFoldersCache = (deps.now(), alerting, top) }
         return top
     }
 
@@ -317,6 +331,12 @@ final class DiskMonitorViewModel: ObservableObject {
         case "missing_scope": return "The Slack app needs the chat:write scope."
         default: return "Slack error: \(code)."
         }
+    }
+
+    /// "Reset to Defaults…": options back to defaults, keeping monitoring
+    /// on/off and the Slack connection (see `resetToDefaults`).
+    func resetSettings() {
+        settings = settings.resetToDefaults()
     }
 
     // MARK: - Slack token (Keychain)

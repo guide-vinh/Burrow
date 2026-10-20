@@ -95,15 +95,14 @@ final class MenuBarController: NSObject, NSMenuDelegate {
             entry.state = preset == current ? .on : .off
             sub.addItem(entry)
         }
-        sub.addItem(.separator())
-        let custom = action(
-            DiskMonitorSettings.thresholdPresets.contains(current)
-                ? "Custom…"
-                : "Custom (\(MenuBarFormat.percent(current)))…",
-            #selector(openMonitoring)
-        )
-        custom.state = DiskMonitorSettings.thresholdPresets.contains(current) ? .off : .on
-        sub.addItem(custom)
+        // The tab offers the same choices, so there's no "Custom…" entry;
+        // a value saved by an earlier version is shown, ticked, as is.
+        if !DiskMonitorSettings.thresholdPresets.contains(current) {
+            let saved = disabled("\(MenuBarFormat.percent(current)) free")
+            saved.state = .on
+            sub.addItem(.separator())
+            sub.addItem(saved)
+        }
         threshold.submenu = sub
         menu.addItem(threshold)
 

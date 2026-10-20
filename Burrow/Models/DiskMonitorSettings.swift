@@ -10,6 +10,16 @@ struct DiskMonitorSettings: Codable, Equatable {
     /// Alert when free space is at or below this percentage (0...100).
     var thresholdPercent: Double = 10
     var intervalMinutes: Int = 60
+    /// `.interval` checks every `intervalMinutes`; `.daily` once a day at
+    /// `dailyMinute` (minutes after midnight, local time), e.g. at night.
+    var schedule: Schedule = .interval
+    var dailyMinute: Int = 5 * 60
+
+    enum Schedule: String, Codable, CaseIterable {
+        case interval, daily
+
+        var label: String { self == .interval ? "Every" : "Daily at" }
+    }
     /// Volumes to check, as paths on each volume ("/" = startup disk).
     var paths: [String] = ["/"]
     /// Name shown in reports; empty means the computer's name.
@@ -38,8 +48,10 @@ struct DiskMonitorSettings: Codable, Equatable {
         var label: String { self == .used ? "Used" : "Free" }
     }
 
-    static let thresholdPresets: [Double] = [5, 10, 15, 20, 25]
-    static let intervalPresets: [Int] = [15, 30, 60, 180, 360]
+    /// Threshold choices in the Monitoring tab and the menu bar: 5% steps
+    /// up to 50%.
+    static let thresholdPresets: [Double] = stride(from: 5, through: 50, by: 5).map(Double.init)
+    static let intervalPresets: [Int] = [15, 30, 60, 180, 360, 720, 1440]
 
     // MARK: - Persistence
 
@@ -53,6 +65,8 @@ struct DiskMonitorSettings: Codable, Equatable {
         enabled = try c.decodeIfPresent(Bool.self, forKey: .enabled) ?? d.enabled
         thresholdPercent = try c.decodeIfPresent(Double.self, forKey: .thresholdPercent) ?? d.thresholdPercent
         intervalMinutes = try c.decodeIfPresent(Int.self, forKey: .intervalMinutes) ?? d.intervalMinutes
+        schedule = (try? c.decodeIfPresent(Schedule.self, forKey: .schedule)) ?? d.schedule
+        dailyMinute = try c.decodeIfPresent(Int.self, forKey: .dailyMinute) ?? d.dailyMinute
         paths = try c.decodeIfPresent([String].self, forKey: .paths) ?? d.paths
         machineName = try c.decodeIfPresent(String.self, forKey: .machineName) ?? d.machineName
         slackChannel = try c.decodeIfPresent(String.self, forKey: .slackChannel) ?? d.slackChannel
@@ -82,29 +96,15 @@ struct DiskMonitorSettings: Codable, Equatable {
     // MARK: - Validation (mirrors diskmon's config rules)
 
     enum ValidationError: LocalizedError, Equatable {
-        case threshold(String)
         case channel(String)
         case mention(String)
 
         var errorDescription: String? {
             switch self {
-            case .threshold(let s): return "Threshold \"\(s)\" must be a number from 0 to 100."
             case .channel(let s): return "\"\(s)\" isn't a Slack channel link. In Slack, right-click the channel → Copy → Copy link, then paste it here."
             case .mention(let s): return "\"\(s)\" is not a Slack user (U…/W…) or user-group (S…) ID."
             }
         }
-    }
-
-    /// Parses a threshold typed by the user, with or without a trailing %.
-    /// Accepts "7.5" and "7,5", since the picker shows the locale's format.
-    static func parseThreshold(_ input: String) throws -> Double {
-        var s = input.trimmingCharacters(in: .whitespaces)
-        if s.hasSuffix("%") { s.removeLast() }
-        s = s.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: ",", with: ".")
-        guard let value = Double(s), value >= 0, value <= 100 else {
-            throw ValidationError.threshold(input)
-        }
-        return value
     }
 
     /// Returns the channel ID from a channel link copied from Slack
@@ -166,6 +166,46 @@ struct DiskMonitorSettings: Codable, Equatable {
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty && seen.insert($0).inserted }
         return paths.isEmpty ? ["/"] : paths
+    }
+
+    /// When the timer should fire next after `now`: one interval later, or
+    /// the daily time's first occurrence today if still ahead, else
+    /// tomorrow's. "First occurrence" matters on DST days: when clocks go
+    /// back, 01:30 happens twice, and the check must still run once; when
+    /// they go forward and 02:30 doesn't exist, it runs at 03:00.
+    func nextRun(after now: Date, calendar: Calendar = .current) -> Date {
+        switch schedule {
+        case .interval:
+            return now.addingTimeInterval(TimeInterval(max(1, intervalMinutes) * 60))
+        case .daily:
+            let minute = min(max(dailyMinute, 0), 24 * 60 - 1)
+            let time = DateComponents(hour: minute / 60, minute: minute % 60)
+            func firstOccurrence(onDayStarting day: Date) -> Date? {
+                calendar.nextDate(after: day.addingTimeInterval(-1), matching: time, matchingPolicy: .nextTime)
+            }
+            let today = calendar.startOfDay(for: now)
+            if let run = firstOccurrence(onDayStarting: today), run > now { return run }
+            if let tomorrow = calendar.date(byAdding: .day, value: 1, to: today),
+               let run = firstOccurrence(onDayStarting: tomorrow) {
+                return run
+            }
+            return now.addingTimeInterval(24 * 3600)
+        }
+    }
+
+    /// These settings with every option back to its default, except what
+    /// the user connected or switched on: monitoring on/off and everything
+    /// in the Slack section (channel, its link, tags and the two report
+    /// toggles; the token lives in the Keychain).
+    func resetToDefaults() -> DiskMonitorSettings {
+        var fresh = DiskMonitorSettings()
+        fresh.enabled = enabled
+        fresh.slackChannel = slackChannel
+        fresh.slackChannelLink = slackChannelLink
+        fresh.slackMentions = slackMentions
+        fresh.alertOnly = alertOnly
+        fresh.includeTopFolders = includeTopFolders
+        return fresh
     }
 
     /// Name used in reports: the configured one, else the computer's name.

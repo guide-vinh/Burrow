@@ -39,7 +39,7 @@ struct RootView: View {
             Task { await refreshFDAState() }
         }
         .background(MainWindowMarker(host: hostWindow))
-        // The menu bar's "Open Monitoring…" / "Custom…" land on this tab —
+        // The menu bar's "Open Monitoring…" lands on this tab —
         // only in the window it brought forward.
         .onReceive(NotificationCenter.default.publisher(for: MonitoringNavigation.notification)) { note in
             if let target = note.object as? NSWindow, target === hostWindow.window {

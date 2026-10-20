@@ -75,7 +75,7 @@ icon respects light/dark mode.
 ### Phase 4a — Disk Monitor (prototype)
 
 Monitoring tab, off by default, every value user-filled. Checks the
-chosen volumes on a timer (15 min – 6 h), raises a macOS notification
+chosen volumes on a timer (15 min – 24 h, or once a day at a set time), raises a macOS notification
 when free space is at or below the threshold, and optionally posts a
 report to Slack (bot token in Keychain, channel, user/group tags,
 largest home folders on alerts). Ported from diskmon. "Open at login"

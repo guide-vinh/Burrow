@@ -6,8 +6,6 @@ import SwiftUI
 struct MonitoringGeneralSection: View {
     @ObservedObject var vm: DiskMonitorViewModel
 
-    @State private var customThreshold = ""
-    @State private var thresholdError: String?
     @State private var pathsDraft = ""
     @State private var nameDraft = ""
     @State private var nameSave: Task<Void, Never>?
@@ -15,6 +13,7 @@ struct MonitoringGeneralSection: View {
     /// was typed here, so an untouched draft (e.g. in a second window) never
     /// overwrites a name saved elsewhere.
     @State private var nameLoaded = ""
+    @State private var confirmReset = false
 
     var body: some View {
         Section("Disk Monitor") {
@@ -27,31 +26,50 @@ struct MonitoringGeneralSection: View {
                         .foregroundStyle(Color.destructive)
                 }
 
-                Picker("Alert when free space is at or below", selection: $vm.settings.thresholdPercent) {
+                Picker("Alert when free space ≤", selection: $vm.settings.thresholdPercent) {
                     ForEach(DiskMonitorSettings.thresholdPresets, id: \.self) { value in
                         Text(MenuBarFormat.percent(value)).tag(value)
                     }
+                    // A value saved by an earlier version that isn't a choice now.
                     if !DiskMonitorSettings.thresholdPresets.contains(vm.settings.thresholdPercent) {
                         Text(MenuBarFormat.percent(vm.settings.thresholdPercent)).tag(vm.settings.thresholdPercent)
                     }
                 }
-                HStack {
-                    TextField("Custom threshold", text: $customThreshold, prompt: Text("e.g. 7.5"))
-                        .onSubmit(applyCustomThreshold)
-                        .onChange(of: customThreshold) { _ in thresholdError = nil }
-                    Button("Set", action: applyCustomThreshold)
-                        .disabled(customThreshold.isEmpty)
-                }
-                if let thresholdError { errorText(thresholdError) }
 
-                Picker("Check every", selection: $vm.settings.intervalMinutes) {
-                    ForEach(DiskMonitorSettings.intervalPresets, id: \.self) { minutes in
-                        Text(intervalLabel(minutes)).tag(minutes)
+                // Schedule mode and its value on one row, so the column fits
+                // the default window height without scrolling.
+                HStack(spacing: Spacing.sm) {
+                    Text("Check")
+                    Spacer(minLength: Spacing.sm)
+                    Picker("Schedule", selection: $vm.settings.schedule) {
+                        ForEach(DiskMonitorSettings.Schedule.allCases, id: \.self) { mode in
+                            Text(mode.label).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .fixedSize()
+                    switch vm.settings.schedule {
+                    case .interval:
+                        Picker("Check every", selection: $vm.settings.intervalMinutes) {
+                            ForEach(DiskMonitorSettings.intervalPresets, id: \.self) { minutes in
+                                Text(intervalLabel(minutes)).tag(minutes)
+                            }
+                        }
+                        .labelsHidden()
+                        .fixedSize()
+                    case .daily:
+                        DatePicker("Check at", selection: dailyTime, displayedComponents: .hourAndMinute)
+                            .labelsHidden()
+                            .fixedSize()
+                            .tooltip("Once a day at this time. If the Mac is asleep then, the check runs when it wakes.")
                     }
                 }
 
                 HStack {
-                    TextField("Volumes (comma-separated)", text: $pathsDraft, prompt: Text("/"))
+                    // Short label so it fits on one line next to the field and
+                    // Set button; the placeholder shows the comma-separated form.
+                    TextField("Volumes", text: $pathsDraft, prompt: Text("/, /Volumes/Data"))
                         .onSubmit(applyPaths)
                     Button("Set", action: applyPaths)
                 }
@@ -71,23 +89,28 @@ struct MonitoringGeneralSection: View {
                     }
                 }
                 .pickerStyle(.segmented)
+
+                HStack {
+                    Spacer()
+                    Button("Reset to Defaults…") { confirmReset = true }
+                }
             }
         }
-        .onAppear {
-            pathsDraft = vm.settings.paths.joined(separator: ", ")
-            nameDraft = vm.settings.machineName
-            nameLoaded = nameDraft
+        .alert("Reset Monitoring settings?", isPresented: $confirmReset) {
+            Button("Cancel", role: .cancel) {}
+            Button("Reset", role: .destructive) { vm.resetSettings() }
+        } message: {
+            Text("Threshold, schedule, volumes, name in reports and display options go back to their defaults. Whether monitoring is on and your Slack settings are kept.")
+        }
+        .onAppear(perform: loadDrafts)
+        // A reset (or the menu bar) can change these while the tab is open.
+        .onChange(of: vm.settings.paths) { _ in pathsDraft = vm.settings.paths.joined(separator: ", ") }
+        // Only when it differs from what's being typed: saving trims the
+        // draft, and reloading then would eat a trailing space mid-typing.
+        .onChange(of: vm.settings.machineName) { saved in
+            if saved != nameDraft.trimmingCharacters(in: .whitespacesAndNewlines) { loadName() }
         }
         .onDisappear(perform: applyName)
-    }
-
-    private func applyCustomThreshold() {
-        do {
-            vm.settings.thresholdPercent = try DiskMonitorSettings.parseThreshold(customThreshold)
-            customThreshold = ""
-        } catch {
-            thresholdError = error.localizedDescription
-        }
     }
 
     private func applyPaths() {
@@ -109,6 +132,30 @@ struct MonitoringGeneralSection: View {
             guard !Task.isCancelled else { return }
             applyName()
         }
+    }
+
+    private func loadDrafts() {
+        pathsDraft = vm.settings.paths.joined(separator: ", ")
+        loadName()
+    }
+
+    private func loadName() {
+        nameDraft = vm.settings.machineName
+        nameLoaded = nameDraft
+    }
+
+    /// `dailyMinute` (minutes after midnight) as a time-of-day for DatePicker.
+    private var dailyTime: Binding<Date> {
+        Binding(
+            get: {
+                let m = vm.settings.dailyMinute
+                return Calendar.current.date(bySettingHour: m / 60, minute: m % 60, second: 0, of: Date()) ?? Date()
+            },
+            set: { date in
+                let parts = Calendar.current.dateComponents([.hour, .minute], from: date)
+                vm.settings.dailyMinute = (parts.hour ?? 0) * 60 + (parts.minute ?? 0)
+            }
+        )
     }
 
     private func intervalLabel(_ minutes: Int) -> String {

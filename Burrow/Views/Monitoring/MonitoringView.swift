@@ -73,7 +73,13 @@ struct MonitoringView: View {
         guard vm.settings.enabled else {
             return "Get notified — and optionally post to Slack — when a disk runs low."
         }
-        guard let last = vm.lastChecked else { return "Waiting for the first check…" }
+        guard let last = vm.lastChecked else {
+            // A daily schedule waits for its time instead of checking at once.
+            if let next = vm.nextCheck {
+                return "First check at \(next.formatted(date: .omitted, time: .shortened))"
+            }
+            return "Waiting for the first check…"
+        }
         let state = vm.isAlert ? "Low disk space" : "All volumes have enough free space"
         return "\(state) · checked \(last.formatted(.relative(presentation: .named)))"
     }
