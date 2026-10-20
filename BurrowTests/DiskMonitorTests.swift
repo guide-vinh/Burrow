@@ -776,6 +776,25 @@ final class DiskMonitorTests: XCTestCase {
         await noChannel.check()
         XCTAssertTrue(spy.posts.isEmpty)
         XCTAssertEqual(spy.notifications, 2)
+        // Nothing would be sent, so the home folder isn't walked either.
+        XCTAssertEqual(spy.scans, 0)
+    }
+
+    @MainActor
+    func testRemovingTokenDuringScanPostsNothing() async throws {
+        let spy = Spy()
+        spy.free["/"] = 1 * gb
+        spy.scanDelay = 300_000_000
+        let (vm, cleanup) = try makeVM(spy) { _ in }
+        defer { cleanup() }
+
+        let running = Task { await vm.check() }
+        await waitUntil { spy.scans == 1 }
+        vm.removeSlackToken()
+        await running.value
+
+        XCTAssertEqual(spy.scans, 1)
+        XCTAssertTrue(spy.posts.isEmpty)
     }
 
     @MainActor
