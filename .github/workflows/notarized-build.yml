@@ -92,6 +92,28 @@ jobs:
           fi
           exit "$fail"
 
+      # Read-only, so a dry run also catches a token that couldn't publish.
+      - name: Check gist token
+        if: inputs.release
+        env:
+          GH_TOKEN: ${{ secrets.GIST_TOKEN }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then echo "::warning::GIST_TOKEN is not set; a real release would fail"; exit 0; fi
+          LOGIN=$(gh api user -q .login)
+          OWNER=$(gh api "gists/$GIST_ID" -q .owner.login)
+          if [ "$LOGIN" != "$OWNER" ]; then
+            echo "::error::GIST_TOKEN belongs to $LOGIN, but only the gist owner ($OWNER) can edit it"; exit 1
+          fi
+          # Classic tokens report their scopes; fine-grained tokens don't.
+          SCOPES=$(gh api -i "gists/$GIST_ID" | tr -d '\r' | sed -n 's/^[Xx]-[Oo][Aa]uth-[Ss]copes: *//p')
+          if [ -z "$SCOPES" ]; then
+            echo "::notice::GIST_TOKEN owner is $LOGIN; its permissions can't be read (fine-grained token?)"
+          elif [[ ",${SCOPES// /}," != *,gist,* ]]; then
+            echo "::error::GIST_TOKEN lacks the gist scope (has: $SCOPES)"; exit 1
+          else
+            echo "GIST_TOKEN: owner $LOGIN, scopes: $SCOPES"
+          fi
+
       - uses: actions/checkout@v7
 
       - name: Select Xcode
