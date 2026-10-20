@@ -61,12 +61,16 @@ final class DiskMonitorTests: XCTestCase {
         let roomy = Reading(path: "/", total: 100 * gb, free: 60 * gb, failed: false)
         let fuller = Reading(path: "/Volumes/B", total: 100 * gb, free: 26 * gb, failed: false)
         XCTAssertEqual(MenuBarFormat.look([roomy, fuller], threshold: 10).symbol, "internaldrive")
-        XCTAssertEqual(MenuBarFormat.look([roomy, fuller], threshold: 10).title, "74%")
+        XCTAssertEqual(MenuBarFormat.look([roomy, fuller], threshold: 10).title, "74.0%")
         XCTAssertEqual(MenuBarFormat.look([roomy, fuller], threshold: 30).symbol, "exclamationmark.triangle")
-        XCTAssertEqual(MenuBarFormat.look([roomy, .unreadable("/X")], threshold: 10).title, "!")
+        // Unreadable isn't a warning: the readable figure plus "?".
+        XCTAssertEqual(MenuBarFormat.look([roomy, .unreadable("/X")], threshold: 10).title, "40.0% ?")
+        XCTAssertEqual(MenuBarFormat.look([roomy, .unreadable("/X")], threshold: 10).symbol, "internaldrive")
+        XCTAssertEqual(MenuBarFormat.look([.unreadable("/X")], threshold: 10).title, "?")
+        XCTAssertEqual(MenuBarFormat.look([fuller, .unreadable("/X")], threshold: 30).symbol, "exclamationmark.triangle")
         XCTAssertEqual(MenuBarFormat.look([], threshold: 10).title, "")
-        XCTAssertEqual(MenuBarFormat.look([roomy, fuller], threshold: 10, display: .free).title, "26%")
-        XCTAssertEqual(MenuBarFormat.look([roomy, .unreadable("/X")], threshold: 10, display: .free).title, "!")
+        XCTAssertEqual(MenuBarFormat.look([roomy, fuller], threshold: 10, display: .free).title, "26.0%")
+        XCTAssertEqual(MenuBarFormat.look([roomy, .unreadable("/X")], threshold: 10, display: .free).title, "60.0% ?")
     }
 
     func testMenuBarLines() {
@@ -272,12 +276,15 @@ final class DiskMonitorTests: XCTestCase {
 
     private let gb = Int64(1_000_000_000)
 
-    func testAlertAtOrBelowThresholdOrOnFailure() {
+    func testAlertAtOrBelowThresholdNotOnFailure() {
         let ok = Reading(path: "/", total: 100 * gb, free: 50 * gb, failed: false)
         let atThreshold = Reading(path: "/", total: 100 * gb, free: 10 * gb, failed: false)
         XCTAssertFalse(DiskMonitorReport.isAlert([ok], threshold: 10))
         XCTAssertTrue(DiskMonitorReport.isAlert([atThreshold], threshold: 10))
-        XCTAssertTrue(DiskMonitorReport.isAlert([ok, .unreadable("/Volumes/X")], threshold: 10))
+        // An unplugged drive is "couldn't be read", not low on space.
+        XCTAssertFalse(DiskMonitorReport.isAlert([ok, .unreadable("/Volumes/X")], threshold: 10))
+        XCTAssertFalse(Reading.unreadable("/Volumes/X").isLow(threshold: 10))
+        XCTAssertTrue(DiskMonitorReport.isAlert([atThreshold, .unreadable("/Volumes/X")], threshold: 10))
         XCTAssertFalse(DiskMonitorReport.isAlert([], threshold: 10))
     }
 
@@ -293,7 +300,7 @@ final class DiskMonitorTests: XCTestCase {
         let attachment = try XCTUnwrap(msg.attachments.first)
         XCTAssertEqual(attachment.color, DiskMonitorReport.alertColor)
         XCTAssertEqual(attachment.blocks.count, 3)
-        XCTAssertTrue(attachment.blocks[0].mrkdwn.contains("*20.0 GB* of 500.0 GB (4% free, threshold 7.5%, *below threshold*)"))
+        XCTAssertTrue(attachment.blocks[0].mrkdwn.contains("*20.0 GB* of 500.0 GB (4.0% free, threshold 7.5%, *below threshold*)"))
         XCTAssertTrue(attachment.blocks[1].mrkdwn.contains("40.0 GB  ~/Library"))
         XCTAssertFalse(attachment.blocks.contains { $0.mrkdwn.contains("<@U01>") })
     }
@@ -328,8 +335,10 @@ final class DiskMonitorTests: XCTestCase {
 
     func testPercentFormatIsLocaleFree() {
         XCTAssertEqual(DiskMonitorReport.percent(7.5), "7.5")
-        XCTAssertEqual(DiskMonitorReport.percent(10), "10")
+        XCTAssertEqual(DiskMonitorReport.percent(10), "10.0")
         XCTAssertEqual(DiskMonitorReport.percent(26.44), "26.4")
+        // Always one decimal: no "96" next to "95.9".
+        XCTAssertEqual(DiskMonitorReport.percent(95.96), "96.0")
     }
 
     func testUnreadableAndEscapedText() throws {
@@ -338,7 +347,7 @@ final class DiskMonitorTests: XCTestCase {
         let text = try XCTUnwrap(msg.attachments.first?.blocks.first?.mrkdwn)
         XCTAssertTrue(text.contains("Host: *&lt;!channel&gt; &amp; co*"))
         XCTAssertTrue(text.contains("`/Volumes/&lt;X&gt;`: *not measured*"))
-        XCTAssertEqual(msg.text, ":warning: Low disk space - &lt;!channel&gt; &amp; co")
+        XCTAssertEqual(msg.text, ":file_folder: Disk report - &lt;!channel&gt; &amp; co")
     }
 
     func testTopSectionWhenScanCouldNotRunOrIsEmpty() throws {
@@ -593,6 +602,7 @@ final class DiskMonitorTests: XCTestCase {
         var granted = true
         var scans = 0
         var free: [String: Int64] = [:]
+        var unreadable: Set<String> = []
         var postDelay: UInt64 = 0
         var scanDelay: UInt64 = 0
         var partialScan = false
@@ -634,7 +644,10 @@ final class DiskMonitorTests: XCTestCase {
         deps.readAll = { paths in
             spy.reads += 1
             if spy.readDelay > 0 { try? await Task.sleep(nanoseconds: spy.readDelay) }
-            return paths.map { Reading(path: $0, total: total, free: spy.free[$0] ?? 50 * total / 100, failed: false) }
+            return paths.map {
+                spy.unreadable.contains($0) ? .unreadable($0)
+                    : Reading(path: $0, total: total, free: spy.free[$0] ?? 50 * total / 100, failed: false)
+            }
         }
         deps.scanTopFolders = {
             spy.scans += 1
@@ -682,6 +695,87 @@ final class DiskMonitorTests: XCTestCase {
         XCTAssertEqual(spy.posts.first?.2, "C0123ABCD")
         XCTAssertEqual(spy.scans, 1)
         XCTAssertEqual(vm.slackStatus, "Report sent to Slack.")
+    }
+
+    @MainActor
+    func testUnreadablePathIsNotLowSpace() async throws {
+        let spy = Spy()
+        spy.unreadable = ["/Volumes/Backup"]   // e.g. unplugged
+        let (vm, cleanup) = try makeVM(spy) { $0.paths = ["/", "/Volumes/Backup"] }
+        defer { cleanup() }
+
+        await vm.check()
+        XCTAssertFalse(vm.isAlert)
+        XCTAssertEqual(vm.unreadablePaths, ["/Volumes/Backup"])
+        XCTAssertEqual(spy.notifications, 0)
+        XCTAssertTrue(spy.posts.isEmpty)   // alertOnly: nothing is low
+
+        spy.free["/"] = 5 * gb
+        await vm.check()
+        XCTAssertTrue(vm.isAlert)
+        XCTAssertEqual(spy.notifications, 1)
+        XCTAssertEqual(spy.posts.count, 1)
+
+        // Readable again: no longer listed.
+        spy.unreadable = []
+        await vm.check()
+        XCTAssertEqual(vm.unreadablePaths, [])
+    }
+
+    @MainActor
+    func testLowPathThatBrieflyCantBeReadDoesNotNotifyAgain() async throws {
+        let spy = Spy()
+        spy.free["/Volumes/NAS"] = 1 * gb
+        let (vm, cleanup) = try makeVM(spy) { $0.paths = ["/", "/Volumes/NAS"] }
+        defer { cleanup() }
+
+        await vm.check()
+        XCTAssertEqual(spy.notifications, 1)
+        XCTAssertEqual(spy.posts.count, 1)
+        XCTAssertEqual(spy.scans, 1)
+        spy.unreadable = ["/Volumes/NAS"]   // read timed out once
+        await vm.check()
+        XCTAssertFalse(vm.isAlert)
+        // Nothing is low meanwhile: no alert-only post, no folder scan.
+        XCTAssertEqual(spy.posts.count, 1)
+        XCTAssertEqual(spy.scans, 1)
+        spy.unreadable = []
+        await vm.check()
+        XCTAssertEqual(spy.notifications, 1)
+        XCTAssertEqual(spy.posts.count, 2)
+    }
+
+    @MainActor
+    func testHeldPathRemovedThenReaddedNotifiesAgain() async throws {
+        let spy = Spy()
+        spy.free["/Volumes/NAS"] = 1 * gb
+        let (vm, cleanup) = try makeVM(spy) { $0.paths = ["/", "/Volumes/NAS"] }
+        defer { cleanup() }
+
+        await vm.check()
+        spy.unreadable = ["/Volumes/NAS"]
+        await vm.check()
+        vm.settings.paths = ["/"]
+        await vm.check()
+        spy.unreadable = []
+        vm.settings.paths = ["/", "/Volumes/NAS"]
+        await vm.check()
+        XCTAssertEqual(spy.notifications, 2)
+    }
+
+    @MainActor
+    func testRemovedPathLeavesUnreadableListAtOnce() async throws {
+        let spy = Spy()
+        spy.unreadable = ["/Volumes/Typo"]
+        let (vm, cleanup) = try makeVM(spy) { $0.paths = ["/", "/Volumes/Typo"] }
+        defer { cleanup() }
+
+        await vm.check()
+        XCTAssertEqual(vm.unreadablePaths, ["/Volumes/Typo"])
+        vm.settings.paths = ["/"]
+        // The tab, header and menu bar all drop it before the next reading.
+        XCTAssertEqual(vm.unreadablePaths, [])
+        XCTAssertEqual(vm.visibleReadings.map(\.path), ["/"])
     }
 
     @MainActor

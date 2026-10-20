@@ -134,6 +134,8 @@ final class DiskMonitorViewModel: ObservableObject {
 
     /// The daily time is local time; after travel, recompute it.
     func handleTimeZoneChange() {
+        // Make sure Calendar.current picks up the new zone.
+        NSTimeZone.resetSystemTimeZone()
         guard settings.enabled, settings.schedule == .daily else { return }
         reschedule(checkNow: false)
     }
@@ -272,9 +274,19 @@ final class DiskMonitorViewModel: ObservableObject {
 
     var isSlackConfigured: Bool { hasSlackToken && !settings.slackChannel.isEmpty }
 
-    var isAlert: Bool {
-        DiskMonitorReport.isAlert(lastReadings, threshold: settings.thresholdPercent)
+    /// The last readings of paths still in the settings, for the tab and the
+    /// menu bar: a removed path disappears at once, not at the next reading.
+    var visibleReadings: [DiskMonitorReport.Reading] {
+        lastReadings.filter { settings.paths.contains($0.path) }
     }
+
+    var isAlert: Bool {
+        DiskMonitorReport.isAlert(visibleReadings, threshold: settings.thresholdPercent)
+    }
+
+    /// Watched paths the last reading couldn't read (not mounted, a typo, or
+    /// a mount that didn't answer in time).
+    var unreadablePaths: [String] { visibleReadings.filter(\.failed).map(\.path) }
 
     /// Reads every path, notifies on a new alert and posts to Slack when
     /// configured. Called by the timer, re-checks and "Check Now". If a check
@@ -300,7 +312,11 @@ final class DiskMonitorViewModel: ObservableObject {
         lastReadings = readings
         lastChecked = Date()
 
-        let alerting = Set(readings.filter { $0.isLow(threshold: s.thresholdPercent) }.map(\.path))
+        let low = Set(readings.filter { $0.isLow(threshold: s.thresholdPercent) }.map(\.path))
+        // A path that was low and now can't be read (a NAS timing out, a
+        // drive unplugged) stays counted, so it doesn't notify again when
+        // it's back and still low.
+        let alerting = low.union(alertingPaths.intersection(readings.filter(\.failed).map(\.path)))
         if alerting.isSubset(of: alertingPaths) {
             alertingPaths = alerting
             notificationPending = false
@@ -322,7 +338,7 @@ final class DiskMonitorViewModel: ObservableObject {
             }
         }
 
-        let alert = !alerting.isEmpty
+        let alert = !low.isEmpty
         guard alert || !s.alertOnly else { return }
 
         // The report only goes to Slack. Without a token and a channel there is
@@ -333,7 +349,7 @@ final class DiskMonitorViewModel: ObservableObject {
         guard let token, !settings.slackChannel.isEmpty else { return }
 
         let wantTop = alert && s.includeTopFolders
-        let top = wantTop ? await topFolders(alerting: alerting, generation: gen) : nil
+        let top = wantTop ? await topFolders(alerting: low, generation: gen) : nil
         guard gen == generation else { return }
         // Token removed (Remove Token) or channel cleared during the scan: no post.
         guard hasSlackToken, !settings.slackChannel.isEmpty else { return }

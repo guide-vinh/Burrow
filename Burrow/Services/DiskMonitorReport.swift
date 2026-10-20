@@ -17,8 +17,10 @@ enum DiskMonitorReport {
         }
         var usedPercent: Double { 100 - freePercent }
 
-        /// Unreadable, or free space at or below the threshold.
-        func isLow(threshold: Double) -> Bool { failed || freePercent <= threshold }
+        /// Free space at or below the threshold. An unreadable path (e.g. an
+        /// unplugged drive) isn't low: it's reported as "couldn't be read"
+        /// instead, so it doesn't raise a low-disk alert on every check.
+        func isLow(threshold: Double) -> Bool { !failed && freePercent <= threshold }
 
         static func unreadable(_ path: String) -> Reading {
             Reading(path: path, total: 0, free: 0, failed: true)
@@ -149,7 +151,7 @@ enum DiskMonitorReport {
 
     // MARK: - Alert decision
 
-    /// True when any path is unreadable or at/below the threshold.
+    /// True when any path is at/below the threshold.
     static func isAlert(_ readings: [Reading], threshold: Double) -> Bool {
         readings.contains { $0.isLow(threshold: threshold) }
     }
@@ -161,10 +163,11 @@ enum DiskMonitorReport {
         String(format: "%.1f GB", Double(bytes) / 1e9)
     }
 
-    /// Percent as written in Slack and notifications: one fixed, locale-free
-    /// format ("7.5", "10"), so a report never mixes "7,5" with "4.0".
+    /// Percent as written in Slack, notifications, the menu and the tab:
+    /// exactly one decimal, locale-free ("7.5", "10.0", like diskmon), so a
+    /// figure never jumps between "96" and "95.9" or reads "7,5".
     static func percent(_ value: Double) -> String {
-        value.formatted(.number.precision(.fractionLength(0...1)).locale(Locale(identifier: "en_US_POSIX")))
+        String(format: "%.1f", locale: Locale(identifier: "en_US_POSIX"), value)
     }
 
     /// The threshold everywhere it's shown (Slack, picker, menu): two
@@ -177,6 +180,7 @@ enum DiskMonitorReport {
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
         f.calendar = Calendar(identifier: .gregorian)
+        f.timeZone = .autoupdatingCurrent
         f.dateFormat = "yyyy-MM-dd HH:mm zzz"
         return f
     }()

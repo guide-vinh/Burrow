@@ -36,10 +36,13 @@ struct MonitoringGeneralSection: View {
                 }
 
                 // Schedule mode and its value on one row, so the column fits
-                // the default window height without scrolling.
+                // the default window height without scrolling. The mode switch
+                // is centered: the label and the value control get equal
+                // flexible space on each side, so it doesn't shift when the
+                // value control changes width and can't overlap it.
                 HStack(spacing: Spacing.sm) {
                     Text("Check")
-                    Spacer(minLength: Spacing.sm)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     Picker("Schedule", selection: $vm.settings.schedule) {
                         ForEach(DiskMonitorSettings.Schedule.allCases, id: \.self) { mode in
                             Text(mode.label).tag(mode)
@@ -48,8 +51,6 @@ struct MonitoringGeneralSection: View {
                     .pickerStyle(.segmented)
                     .labelsHidden()
                     .fixedSize()
-                    // Fixed width, so the segmented control doesn't shift when
-                    // the control next to it changes.
                     Group {
                         switch vm.settings.schedule {
                         case .interval:
@@ -67,7 +68,7 @@ struct MonitoringGeneralSection: View {
                                 .tooltip("Once a day at this time. If the Mac is asleep or Burrow isn't running then, the check runs when it wakes or opens.")
                         }
                     }
-                    .frame(width: 112, alignment: .trailing)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
                 }
 
                 HStack {
@@ -77,8 +78,8 @@ struct MonitoringGeneralSection: View {
                         .onSubmit(applyPaths)
                     Button("Set", action: applyPaths)
                 }
-                if !missingPaths.isEmpty {
-                    Text("Not found: \(missingPaths.joined(separator: ", ")). It's checked anyway and reported as unreadable until it's there.")
+                if !vm.unreadablePaths.isEmpty {
+                    Text("Couldn't be read: \(vm.unreadablePaths.joined(separator: ", ")). Not mounted, mistyped or not responding? It's still checked; it shows as unreadable, not as low on space.")
                         .font(.captionM)
                         .foregroundStyle(Color.fgMuted)
                 }
@@ -109,7 +110,7 @@ struct MonitoringGeneralSection: View {
             Button("Cancel", role: .cancel) {}
             Button("Reset", role: .destructive) { vm.resetSettings() }
         } message: {
-            Text("Threshold, schedule, volumes, name in reports and display options go back to their defaults. Whether monitoring is on and your Slack settings are kept. If monitoring is on, it may check right away, which can notify or post to Slack.")
+            Text("Threshold, schedule, paths, name in reports and display options go back to their defaults. Whether monitoring is on and your Slack settings are kept. If monitoring is on, it may check right away, which can notify or post to Slack.")
         }
         .onAppear(perform: loadDrafts)
         // A reset (or the menu bar) can change these while the tab is open.
@@ -124,14 +125,6 @@ struct MonitoringGeneralSection: View {
 
     private var thresholdChoices: [Double] {
         Array(Set(DiskMonitorSettings.thresholdPresets + [vm.settings.thresholdPercent])).sorted()
-    }
-
-    /// Entered paths that don't exist right now (e.g. a typo, or a volume
-    /// that isn't mounted).
-    private var missingPaths: [String] {
-        vm.settings.paths.filter {
-            !FileManager.default.fileExists(atPath: ($0 as NSString).expandingTildeInPath)
-        }
     }
 
     private func applyPaths() {
