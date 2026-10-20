@@ -1,14 +1,23 @@
-# Archive → Developer-ID-sign → notarize → staple, on a GitHub macOS runner.
-# Mirrors steps 1–6 of scripts/release.sh; does NOT commit a version bump,
-# sign for Sparkle, touch the appcast, or publish a release. The `version` and
-# `build` inputs only stamp Info.plist on the runner. The notarized zip is
-# uploaded as a workflow artifact.
+# Archive → Developer-ID-sign → notarize → staple on a GitHub macOS runner,
+# and optionally publish the result as a release, like scripts/release.sh.
 #
-# Required repository secrets:
+# Build only (default): the notarized zip is uploaded as a workflow artifact.
+# The `version` and `build` inputs only stamp Info.plist on the runner.
+#
+# release: also builds a signed + notarized DMG, signs the zip for Sparkle,
+# appends it to scripts/appcast.xml, commits the version bump and appcast to
+# main, tags v<version>, creates the GitHub release with the DMG and zip, and
+# pushes the appcast to the gist installed apps poll (SUFeedURL). The build
+# number defaults to Info.plist's + 1. With dry_run, every file is produced
+# and uploaded as an artifact, but nothing is pushed or published.
+#
+# Repository secrets:
 #   DEVELOPER_ID_P12_BASE64    base64 of the "Developer ID Application" .p12 (cert + private key)
 #   DEVELOPER_ID_P12_PASSWORD  password of that .p12
 #   NOTARY_APPLE_ID            Apple ID used for notarization
 #   NOTARY_APP_PASSWORD        app-specific password for that Apple ID
+#   SPARKLE_ED_PRIVATE_KEY     (release) private EdDSA key, from Sparkle's `generate_keys -x`
+#   GIST_TOKEN                 (release, not dry run) token allowed to edit the appcast gist
 
 name: Notarized build
 
@@ -16,16 +25,26 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version (CFBundleShortVersionString), e.g. 0.3.0. Empty keeps Info.plist's."
+        description: "Version (CFBundleShortVersionString), e.g. 0.3.0. Required for a release; empty keeps Info.plist's."
         required: false
         type: string
       build:
-        description: "Build number (CFBundleVersion), e.g. 22. Empty keeps Info.plist's."
+        description: "Build number (CFBundleVersion), e.g. 22. Empty keeps Info.plist's (+1 for a release)."
         required: false
         type: string
+      release:
+        description: "Publish a release: DMG, Sparkle signature, appcast, version-bump commit and tag on main, GitHub release."
+        required: false
+        type: boolean
+        default: false
+      dry_run:
+        description: "With release: produce every file but push and publish nothing."
+        required: false
+        type: boolean
+        default: false
 
 permissions:
-  contents: read
+  contents: write   # release: push the version-bump commit and tag, create the release
 
 concurrency:
   group: notarized-build-${{ github.ref }}
@@ -34,26 +53,44 @@ concurrency:
 jobs:
   build:
     runs-on: macos-26
-    timeout-minutes: 60
+    timeout-minutes: 90
     env:
       XCODE_APP: /Applications/Xcode_26.6.app
       SCHEME: Burrow
       TEAM_ID: T4XT6XZ2WT
+      SIGNING_IDENTITY: "Developer ID Application: Nha Nguyen Trong (T4XT6XZ2WT)"
+      GIST_ID: 8b71ecd743dadfba09878aca26795040
       OUT_DIR: build/ci
+      SPARKLE_BIN: build/SourcePackages/artifacts/sparkle/Sparkle/bin
+      RELEASE: ${{ inputs.release }}
+      PUBLISH: ${{ inputs.release && !inputs.dry_run }}
+      HOMEBREW_NO_AUTO_UPDATE: "1"
 
     steps:
-      - name: Check secrets
+      - name: Check inputs and secrets
         env:
+          INPUT_VERSION: ${{ inputs.version }}
           DEVELOPER_ID_P12_BASE64: ${{ secrets.DEVELOPER_ID_P12_BASE64 }}
           DEVELOPER_ID_P12_PASSWORD: ${{ secrets.DEVELOPER_ID_P12_PASSWORD }}
           NOTARY_APPLE_ID: ${{ secrets.NOTARY_APPLE_ID }}
           NOTARY_APP_PASSWORD: ${{ secrets.NOTARY_APP_PASSWORD }}
+          SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
+          GIST_TOKEN: ${{ secrets.GIST_TOKEN }}
         run: |
-          missing=0
-          for name in DEVELOPER_ID_P12_BASE64 DEVELOPER_ID_P12_PASSWORD NOTARY_APPLE_ID NOTARY_APP_PASSWORD; do
-            if [ -z "${!name}" ]; then echo "::error::Missing repository secret $name"; missing=1; fi
+          fail=0
+          need=(DEVELOPER_ID_P12_BASE64 DEVELOPER_ID_P12_PASSWORD NOTARY_APPLE_ID NOTARY_APP_PASSWORD)
+          if [ "$RELEASE" = true ]; then need+=(SPARKLE_ED_PRIVATE_KEY); fi
+          if [ "$PUBLISH" = true ]; then need+=(GIST_TOKEN); fi
+          for name in "${need[@]}"; do
+            if [ -z "${!name}" ]; then echo "::error::Missing repository secret $name"; fail=1; fi
           done
-          exit "$missing"
+          if [ "$RELEASE" = true ] && [ -z "$INPUT_VERSION" ]; then
+            echo "::error::A release needs a version"; fail=1
+          fi
+          if [ "$PUBLISH" = true ] && [ "$GITHUB_REF" != refs/heads/main ]; then
+            echo "::error::Releases are published from main (this run is on $GITHUB_REF); use dry_run to try another branch"; fail=1
+          fi
+          exit "$fail"
 
       - uses: actions/checkout@v7
 
@@ -67,27 +104,40 @@ jobs:
         run: git config --global url."https://github.com/".insteadOf "git@github.com:"
 
       - name: Set version
-        if: inputs.version != '' || inputs.build != ''
         env:
           INPUT_VERSION: ${{ inputs.version }}
           INPUT_BUILD: ${{ inputs.build }}
         run: |
+          PLIST=Burrow/Info.plist
           if [ -n "$INPUT_VERSION" ]; then
             [[ "$INPUT_VERSION" =~ ^[0-9]+(\.[0-9]+){1,2}$ ]] || { echo "::error::version must look like 1.2 or 1.2.3, got '$INPUT_VERSION'"; exit 1; }
-            /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $INPUT_VERSION" Burrow/Info.plist
+            /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $INPUT_VERSION" "$PLIST"
           fi
           if [ -n "$INPUT_BUILD" ]; then
             [[ "$INPUT_BUILD" =~ ^[0-9]+$ ]] || { echo "::error::build must be a whole number, got '$INPUT_BUILD'"; exit 1; }
-            /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $INPUT_BUILD" Burrow/Info.plist
+            /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $INPUT_BUILD" "$PLIST"
+          elif [ "$RELEASE" = true ]; then
+            # Sparkle compares CFBundleVersion: every release must be strictly newer.
+            CURRENT=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$PLIST")
+            /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $((CURRENT + 1))" "$PLIST"
+          fi
+          if [ "$RELEASE" = true ] && git ls-remote --exit-code --tags origin "refs/tags/v$INPUT_VERSION" > /dev/null; then
+            if [ "$PUBLISH" = true ]; then echo "::error::Tag v$INPUT_VERSION already exists"; exit 1; fi
+            echo "::warning::Tag v$INPUT_VERSION already exists; a real release with this version would fail"
           fi
 
       - name: Read version
         run: |
           VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" Burrow/Info.plist)
           BUILD=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" Burrow/Info.plist)
-          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           echo "Building Burrow $VERSION (build $BUILD)"
-          echo "ARTIFACT=Burrow-$VERSION-build$BUILD-${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "BUILD=$BUILD" >> "$GITHUB_ENV"
+          if [ "$RELEASE" = true ]; then
+            echo "NAME=Burrow-$VERSION" >> "$GITHUB_ENV"
+          else
+            echo "NAME=Burrow-$VERSION-build$BUILD-${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+          fi
 
       - name: Import Developer ID certificate
         env:
@@ -119,9 +169,11 @@ jobs:
 
       - name: Archive (Release, Developer ID)
         run: |
+          # Fixed package dir, so Sparkle's sign_update is at $SPARKLE_BIN.
           xcodebuild -scheme "$SCHEME" -configuration Release \
             -destination 'generic/platform=macOS' \
             -archivePath "$OUT_DIR/Burrow.xcarchive" \
+            -clonedSourcePackagesDirPath build/SourcePackages \
             -scmProvider system \
             OTHER_CODE_SIGN_FLAGS="--keychain $KEYCHAIN" \
             archive
@@ -134,36 +186,151 @@ jobs:
             -exportPath "$OUT_DIR/export"
           codesign --verify --deep --strict --verbose=2 "$OUT_DIR/export/Burrow.app"
 
-      - name: Notarize
+      - name: Notarize app
         env:
           NOTARY_APPLE_ID: ${{ secrets.NOTARY_APPLE_ID }}
           NOTARY_APP_PASSWORD: ${{ secrets.NOTARY_APP_PASSWORD }}
         run: |
           ditto -c -k --keepParent "$OUT_DIR/export/Burrow.app" "$OUT_DIR/notarize.zip"
-          RESULT=$(xcrun notarytool submit "$OUT_DIR/notarize.zip" \
-            --apple-id "$NOTARY_APPLE_ID" --password "$NOTARY_APP_PASSWORD" --team-id "$TEAM_ID" \
-            --wait --timeout 30m --output-format json)
-          echo "$RESULT"
-          if [ "$(jq -r .status <<<"$RESULT")" != "Accepted" ]; then
-            xcrun notarytool log "$(jq -r .id <<<"$RESULT")" \
-              --apple-id "$NOTARY_APPLE_ID" --password "$NOTARY_APP_PASSWORD" --team-id "$TEAM_ID" || true
-            exit 1
-          fi
+          scripts/ci/notarize.sh "$OUT_DIR/notarize.zip"
 
-      - name: Staple and verify
+      - name: Staple and verify app
         run: |
           APP="$OUT_DIR/export/Burrow.app"
           xcrun stapler staple "$APP"
           xcrun stapler validate "$APP"
           spctl --assess --type execute --verbose=4 "$APP"
-          ditto -c -k --keepParent "$APP" "$OUT_DIR/$ARTIFACT.zip"
+          ditto -c -k --keepParent "$APP" "$OUT_DIR/$NAME.zip"
+
+      # create-dmg lays out the window through Finder AppleScript, which can
+      # stall on a runner; fall back to a plain DMG rather than fail.
+      - name: Build DMG
+        id: dmg
+        if: inputs.release
+        continue-on-error: true
+        timeout-minutes: 10
+        run: |
+          brew list create-dmg > /dev/null 2>&1 || brew install create-dmg
+          STAGE="$RUNNER_TEMP/dmg-stage"
+          rm -rf "$STAGE" && mkdir -p "$STAGE"
+          ditto "$OUT_DIR/export/Burrow.app" "$STAGE/Burrow.app"
+          rm -f "$OUT_DIR/$NAME.dmg"
+          create-dmg \
+            --volname "Burrow $VERSION" \
+            --window-pos 200 120 \
+            --window-size 600 320 \
+            --icon-size 100 \
+            --icon "Burrow.app" 175 140 \
+            --hide-extension "Burrow.app" \
+            --app-drop-link 425 140 \
+            "$OUT_DIR/$NAME.dmg" \
+            "$STAGE"
+
+      - name: Build DMG without Finder layout
+        if: inputs.release && steps.dmg.outcome != 'success'
+        run: |
+          echo "::warning::create-dmg with Finder layout failed; building the DMG without window layout"
+          STAGE="$RUNNER_TEMP/dmg-stage"
+          rm -rf "$STAGE" && mkdir -p "$STAGE"
+          ditto "$OUT_DIR/export/Burrow.app" "$STAGE/Burrow.app"
+          rm -f "$OUT_DIR/$NAME.dmg"
+          create-dmg --skip-jenkins \
+            --volname "Burrow $VERSION" \
+            --app-drop-link 425 140 \
+            "$OUT_DIR/$NAME.dmg" \
+            "$STAGE"
+
+      - name: Sign, notarize and staple DMG
+        if: inputs.release
+        env:
+          NOTARY_APPLE_ID: ${{ secrets.NOTARY_APPLE_ID }}
+          NOTARY_APP_PASSWORD: ${{ secrets.NOTARY_APP_PASSWORD }}
+        run: |
+          DMG="$OUT_DIR/$NAME.dmg"
+          codesign --force --sign "$SIGNING_IDENTITY" --keychain "$KEYCHAIN" --timestamp "$DMG"
+          scripts/ci/notarize.sh "$DMG"
+          xcrun stapler staple "$DMG"
+          xcrun stapler validate "$DMG"
+          spctl --assess --type open --context context:primary-signature --verbose=4 "$DMG"
+
+      - name: Sign for Sparkle and add to appcast
+        if: inputs.release
+        env:
+          SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
+        run: |
+          ZIP="$OUT_DIR/$NAME.zip"
+          SIGNATURE=$(printf '%s' "$SPARKLE_ED_PRIVATE_KEY" | "$SPARKLE_BIN/sign_update" --ed-key-file - -p "$ZIP")
+          LENGTH=$(stat -f %z "$ZIP")
+
+          # Installed apps only accept updates signed by the key matching their SUPublicEDKey.
+          brew list openssl@3 > /dev/null 2>&1 || brew install openssl@3
+          PUBLIC_KEY=$(/usr/libexec/PlistBuddy -c "Print :SUPublicEDKey" Burrow/Info.plist)
+          OPENSSL="$(brew --prefix openssl@3)/bin/openssl" scripts/ci/verify_ed25519.sh "$ZIP" "$SIGNATURE" "$PUBLIC_KEY"
+
+          ITEM=$(mktemp)
+          cat > "$ITEM" <<ITEM
+                  <item>
+                      <title>Version ${VERSION}</title>
+                      <pubDate>$(date -u +"%a, %d %b %Y %H:%M:%S +0000")</pubDate>
+                      <sparkle:version>${BUILD}</sparkle:version>
+                      <sparkle:shortVersionString>${VERSION}</sparkle:shortVersionString>
+                      <sparkle:minimumSystemVersion>12.0</sparkle:minimumSystemVersion>
+                      <enclosure
+                          url="https://github.com/${GITHUB_REPOSITORY}/releases/download/v${VERSION}/${NAME}.zip"
+                          sparkle:edSignature="${SIGNATURE}"
+                          length="${LENGTH}"
+                          type="application/octet-stream" />
+                  </item>
+          ITEM
+          # Insert the item right before </channel>, as scripts/release.sh does.
+          TMP=$(mktemp)
+          awk -v itemfile="$ITEM" '
+            /<\/channel>/ { while ((getline line < itemfile) > 0) print line; close(itemfile); print; next }
+            { print }
+          ' scripts/appcast.xml > "$TMP"
+          mv "$TMP" scripts/appcast.xml
+          cp scripts/appcast.xml "$OUT_DIR/appcast.xml"
+          git diff -- scripts/appcast.xml
 
       - uses: actions/upload-artifact@v7
         with:
-          name: ${{ env.ARTIFACT }}
-          path: ${{ env.OUT_DIR }}/${{ env.ARTIFACT }}.zip
+          name: ${{ env.NAME }}
+          path: |
+            ${{ env.OUT_DIR }}/${{ env.NAME }}.zip
+            ${{ env.OUT_DIR }}/${{ env.NAME }}.dmg
+            ${{ env.OUT_DIR }}/appcast.xml
           if-no-files-found: error
           retention-days: 30
+
+      - name: Commit version bump and tag
+        if: env.PUBLISH == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Burrow/Info.plist scripts/appcast.xml
+          git commit -m "chore(release): v$VERSION (build $BUILD)"
+          git tag -a "v$VERSION" -m "Burrow v$VERSION"
+          git push origin HEAD:main
+          git push origin "v$VERSION"
+
+      - name: Create GitHub release
+        if: env.PUBLISH == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v$VERSION" "$OUT_DIR/$NAME.dmg" "$OUT_DIR/$NAME.zip" \
+            --title "v$VERSION" --generate-notes
+
+      # Last, so installed apps only see the update once the release exists.
+      - name: Publish appcast to gist
+        if: env.PUBLISH == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GIST_TOKEN }}
+        run: |
+          jq -n --rawfile content scripts/appcast.xml '{files: {"appcast.xml": {content: $content}}}' \
+            | gh api -X PATCH "gists/$GIST_ID" --input - > /dev/null
+          gh api "gists/$GIST_ID" -q '.files["appcast.xml"].content' | grep -q "<sparkle:version>$BUILD</sparkle:version>"
+          echo "Appcast: https://gist.githubusercontent.com/guide-vinh/$GIST_ID/raw/appcast.xml"
 
       - name: Remove signing keychain
         if: always()
