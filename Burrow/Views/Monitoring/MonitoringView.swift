@@ -104,9 +104,19 @@ private struct VolumeRow: View {
                     .monospacedDigit()
             }
             if !reading.failed {
-                ProgressView(value: min(max(display == .used ? reading.usedPercent : reading.freePercent, 0), 100),
-                             total: 100)
-                    .tint(isLow ? Color.destructive : Color.accentPrimary)
+                // Drawn like Analyze's capacity bar (CapacitySummaryCard), and
+                // like it always fills the used share: Used/Free only changes
+                // the label. A native ProgressView ignores tint on macOS 12.
+                GeometryReader { geometry in
+                    ZStack(alignment: .leading) {
+                        Capsule()
+                            .fill(Color.surfaceTertiary)
+                        Capsule()
+                            .fill(isLow ? Color.destructive : Color.accentPrimary)
+                            .frame(width: max(0, geometry.size.width * fraction))
+                    }
+                }
+                .frame(height: 8)
             }
         }
         .padding(.vertical, Spacing.xs)
@@ -114,6 +124,11 @@ private struct VolumeRow: View {
 
     private var detail: String {
         reading.failed ? "Couldn't be read" : MenuBarFormat.usage(reading, display)
+    }
+
+    /// Share of the bar to fill: always the space used.
+    private var fraction: Double {
+        min(max(reading.usedPercent, 0), 100) / 100
     }
 }
 
