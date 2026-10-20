@@ -32,10 +32,12 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         guard let vm, vm.settings.enabled, vm.settings.showInMenuBar else {
             if let statusItem { NSStatusBar.system.removeStatusItem(statusItem) }
             statusItem = nil
+            DockPresence.menuBarItemShown = false
             return
         }
         let item = statusItem ?? makeStatusItem()
         statusItem = item
+        DockPresence.menuBarItemShown = true
 
         let look = MenuBarFormat.look(vm.lastReadings, threshold: vm.settings.thresholdPercent,
                                       display: vm.settings.percentDisplay)
@@ -192,6 +194,8 @@ enum MonitoringNavigation {
         // first so they count, instead of opening a duplicate window.
         let wasHidden = NSApp.isHidden
         if wasHidden { NSApp.unhide(nil) }
+        // Back in the Dock first: an accessory app has no menu bar to show.
+        DockPresence.windowWillShow()
         NSApp.activate(ignoringOtherApps: true)
         // Only windows hosting RootView — not Settings, which also qualifies
         // as a main window but has no Monitoring tab to switch to.
@@ -248,7 +252,10 @@ struct MainWindowMarker: NSViewRepresentable {
 
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
-            if let window { MonitoringNavigation.mainWindows.add(window) }
+            if let window {
+                MonitoringNavigation.mainWindows.add(window)
+                DockPresence.windowWillShow()
+            }
             host.window = window
         }
     }
