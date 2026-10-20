@@ -105,6 +105,17 @@ final class DiskMonitorTests: XCTestCase {
         XCTAssertThrowsError(try DiskMonitorSettings.parseChannel("http://guide.slack.com/archives/C0123ABCD"))
     }
 
+    func testParseToken() throws {
+        XCTAssertEqual(try DiskMonitorSettings.parseToken("  xoxb-123-456-AbC\n"), "xoxb-123-456-AbC")
+        XCTAssertEqual(try DiskMonitorSettings.parseToken("xoxp-1-2"), "xoxp-1-2")
+        // Half-pasted, other secrets, or text around the token.
+        for bad in ["", "xoxb-", "xoxb", "8f2c1e0d9a", "Bearer xoxb-1-2", "xoxb-1 2"] {
+            XCTAssertThrowsError(try DiskMonitorSettings.parseToken(bad), bad) { error in
+                XCTAssertEqual(error as? DiskMonitorSettings.ValidationError, .token)
+            }
+        }
+    }
+
     func testApplyChannelLink() throws {
         var s = DiskMonitorSettings()
         try s.applyChannelLink(" https://guide.slack.com/archives/C0123ABCD ")

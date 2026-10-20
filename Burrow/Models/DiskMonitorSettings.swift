@@ -85,12 +85,14 @@ struct DiskMonitorSettings: Codable, Equatable {
         case threshold(String)
         case channel(String)
         case mention(String)
+        case token
 
         var errorDescription: String? {
             switch self {
             case .threshold(let s): return "Threshold \"\(s)\" must be a number from 0 to 100."
             case .channel(let s): return "\"\(s)\" isn't a Slack channel link. In Slack, right-click the channel → Copy → Copy link, then paste it here."
             case .mention(let s): return "\"\(s)\" is not a Slack user (U…/W…) or user-group (S…) ID."
+            case .token: return "That isn't a Slack token. Copy the Bot User OAuth Token (xoxb-…) from your Slack app's OAuth & Permissions page."
             }
         }
     }
@@ -144,6 +146,16 @@ struct DiskMonitorSettings: Codable, Equatable {
         let channel = try Self.parseChannel(draft)
         slackChannel = channel
         slackChannelLink = channel.isEmpty ? "" : draft
+    }
+
+    /// A pasted Slack token, trimmed; rejects anything not shaped like one
+    /// (xoxb-…, xoxp-…), e.g. a half-pasted value or the signing secret.
+    static func parseToken(_ input: String) throws -> String {
+        let token = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard token.range(of: "^xox[a-z]-[A-Za-z0-9-]+$", options: .regularExpression) != nil else {
+            throw ValidationError.token
+        }
+        return token
     }
 
     /// Splits a comma-separated list of Slack IDs. Rejects @names, which

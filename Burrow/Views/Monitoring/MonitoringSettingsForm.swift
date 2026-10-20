@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// The "Disk Monitor" section of the Monitoring tab (left column). Text
@@ -119,15 +120,29 @@ struct MonitoringGeneralSection: View {
 }
 
 /// The optional "Slack" section of the Monitoring tab (right column).
-/// Channel and tags are drafts applied on Save; the token goes straight to
-/// the Keychain and is never shown again.
+/// Each field saves itself once the user is done with it: on Return, when
+/// focus leaves it, a moment after typing stops, and when the tab closes or
+/// the app quits. Save still applies everything at once. The token goes
+/// straight to the Keychain and is never shown again.
 struct MonitoringSlackSection: View {
     @ObservedObject var vm: DiskMonitorViewModel
 
+    private enum Field { case token, channel, mentions }
+
     @State private var tokenDraft = ""
+    /// The draft last written to the Keychain by a save while typing; the
+    /// field keeps showing it until the user moves on.
+    @State private var savedTokenDraft = ""
     @State private var channelDraft = ""
     @State private var mentionsDraft = ""
-    @State private var slackError: String?
+    @State private var tokenError: String?
+    @State private var channelError: String?
+    @State private var mentionsError: String?
+    @State private var pendingSave: Task<Void, Never>?
+    @FocusState private var focus: Field?
+
+    /// How long after the last keystroke a field saves itself.
+    private static let saveDelay: UInt64 = 1_000_000_000
 
     var body: some View {
         Section("Slack (optional)") {
@@ -137,8 +152,19 @@ struct MonitoringSlackSection: View {
 
             SecureField("Bot token", text: $tokenDraft,
                         prompt: Text(vm.hasSlackToken ? "Saved in Keychain" : "xoxb-…"))
+                .focused($focus, equals: .token)
+                .onSubmit { saveAll() }
+            if let tokenError { errorText(tokenError) }
+
             TextField("Channel link", text: $channelDraft, prompt: Text("https://…slack.com/archives/C0123ABCD"))
+                .focused($focus, equals: .channel)
+                .onSubmit { saveAll() }
+            if let channelError { errorText(channelError) }
+
             TextField("Tag on alerts", text: $mentionsDraft, prompt: Text("U0123ABCD, S0456EFGH"))
+                .focused($focus, equals: .mentions)
+                .onSubmit { saveAll() }
+            if let mentionsError { errorText(mentionsError) }
 
             Toggle("Only post when space is low", isOn: $vm.settings.alertOnly)
             Toggle("Include largest folders on alerts", isOn: $vm.settings.includeTopFolders)
@@ -150,51 +176,105 @@ struct MonitoringSlackSection: View {
                 Spacer()
                 Button("Send Test Message") { Task { await vm.sendTestMessage() } }
                     .disabled(!vm.isSlackConfigured || hasUnsavedSlackEdits)
-                Button("Save", action: saveSlack)
+                Button("Save") { saveAll() }
+                    .buttonStyle(.borderedProminent)
                     .disabled(!hasUnsavedSlackEdits)
             }
 
-            if hasUnsavedSlackEdits {
-                Text("Save to apply your changes before sending a test.")
+            if hasUnsavedSlackEdits && !hasErrors {
+                Text("Saves automatically when you finish typing.")
                     .font(.captionM)
                     .foregroundStyle(Color.fgMuted)
-            }
-            if let slackError {
-                errorText(slackError)
             } else if let status = vm.slackStatus {
                 Text(status).font(.captionM).foregroundStyle(Color.fgSecondary)
             }
         }
-        .onChange(of: channelDraft) { _ in slackError = nil }
-        .onChange(of: mentionsDraft) { _ in slackError = nil }
+        .onChange(of: tokenDraft) { _ in tokenError = nil; scheduleSave() }
+        .onChange(of: channelDraft) { _ in channelError = nil; scheduleSave() }
+        .onChange(of: mentionsDraft) { _ in mentionsError = nil; scheduleSave() }
+        // Leaving a field counts as done with it.
+        .onChange(of: focus) { _ in saveAll() }
         .onAppear {
             vm.refreshSlackToken()
             channelDraft = vm.settings.slackChannelLink
             mentionsDraft = vm.settings.slackMentions.joined(separator: ", ")
         }
+        .onDisappear { saveAll() }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
+            saveAll()
+        }
     }
 
+    private var hasErrors: Bool { tokenError != nil || channelError != nil || mentionsError != nil }
+
     private var hasUnsavedSlackEdits: Bool {
-        !trimmed(tokenDraft).isEmpty
+        (!trimmed(tokenDraft).isEmpty && tokenDraft != savedTokenDraft)
             || trimmed(channelDraft) != vm.settings.slackChannelLink
             || (try? DiskMonitorSettings.parseMentions(mentionsDraft)) != vm.settings.slackMentions
     }
 
     private func trimmed(_ s: String) -> String { s.trimmingCharacters(in: .whitespacesAndNewlines) }
 
-    private func saveSlack() {
+    private func scheduleSave() {
+        pendingSave?.cancel()
+        pendingSave = Task {
+            try? await Task.sleep(nanoseconds: Self.saveDelay)
+            guard !Task.isCancelled else { return }
+            save(finished: false)
+        }
+    }
+
+    /// The user is done (Return, focus moved, Save, tab closed, app quitting).
+    private func saveAll() {
+        pendingSave?.cancel()
+        save(finished: true)
+    }
+
+    /// Saves each edited field on its own, so a mistake in one doesn't hold
+    /// back the others. While the user may still be typing (`finished` is
+    /// false) an invalid value is just left unsaved, without an error, and
+    /// no draft is rewritten under the cursor.
+    private func save(finished: Bool) {
+        var savedSettings = false
+
+        let token = trimmed(tokenDraft)
+        if !token.isEmpty, tokenDraft != savedTokenDraft {
+            do {
+                if vm.saveSlackToken(try DiskMonitorSettings.parseToken(token)) {
+                    savedTokenDraft = tokenDraft
+                }
+            } catch {
+                if finished { tokenError = error.localizedDescription }
+            }
+        }
+        if finished, !tokenDraft.isEmpty, tokenDraft == savedTokenDraft {
+            // Saved: clear the field so it shows "Saved in Keychain".
+            tokenDraft = ""
+            savedTokenDraft = ""
+        }
+
+        if trimmed(channelDraft) != vm.settings.slackChannelLink {
+            do {
+                try vm.settings.applyChannelLink(channelDraft)
+                savedSettings = true
+                if finished { channelDraft = vm.settings.slackChannelLink }
+            } catch {
+                if finished { channelError = error.localizedDescription }
+            }
+        }
+
         do {
             let mentions = try DiskMonitorSettings.parseMentions(mentionsDraft)
-            try vm.settings.applyChannelLink(channelDraft)
-            slackError = nil
-            vm.settings.slackMentions = mentions
-            channelDraft = vm.settings.slackChannelLink
-            // Blank input never deletes the stored token; that's Remove Token.
-            vm.saveSlackToken(tokenDraft)
-            tokenDraft = ""
+            if mentions != vm.settings.slackMentions {
+                vm.settings.slackMentions = mentions
+                savedSettings = true
+            }
+            if finished { mentionsDraft = mentions.joined(separator: ", ") }
         } catch {
-            slackError = error.localizedDescription
+            if finished { mentionsError = error.localizedDescription }
         }
+
+        if savedSettings { vm.noteSlackSettingsSaved() }
     }
 }
 
