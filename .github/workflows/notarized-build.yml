@@ -1,6 +1,7 @@
 # Archive → Developer-ID-sign → notarize → staple, on a GitHub macOS runner.
-# Mirrors steps 1–6 of scripts/release.sh; does NOT bump the version, sign
-# for Sparkle, touch the appcast, or publish a release. The notarized zip is
+# Mirrors steps 1–6 of scripts/release.sh; does NOT commit a version bump,
+# sign for Sparkle, touch the appcast, or publish a release. The `version` and
+# `build` inputs only stamp Info.plist on the runner. The notarized zip is
 # uploaded as a workflow artifact.
 #
 # Required repository secrets:
@@ -13,6 +14,15 @@ name: Notarized build
 
 on:
   workflow_dispatch:
+    inputs:
+      version:
+        description: "Version (CFBundleShortVersionString), e.g. 0.3.0. Empty keeps Info.plist's."
+        required: false
+        type: string
+      build:
+        description: "Build number (CFBundleVersion), e.g. 22. Empty keeps Info.plist's."
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -56,11 +66,27 @@ jobs:
       - name: Fetch packages over HTTPS
         run: git config --global url."https://github.com/".insteadOf "git@github.com:"
 
+      - name: Set version
+        if: inputs.version != '' || inputs.build != ''
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_BUILD: ${{ inputs.build }}
+        run: |
+          if [ -n "$INPUT_VERSION" ]; then
+            [[ "$INPUT_VERSION" =~ ^[0-9]+(\.[0-9]+){1,2}$ ]] || { echo "::error::version must look like 1.2 or 1.2.3, got '$INPUT_VERSION'"; exit 1; }
+            /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $INPUT_VERSION" Burrow/Info.plist
+          fi
+          if [ -n "$INPUT_BUILD" ]; then
+            [[ "$INPUT_BUILD" =~ ^[0-9]+$ ]] || { echo "::error::build must be a whole number, got '$INPUT_BUILD'"; exit 1; }
+            /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $INPUT_BUILD" Burrow/Info.plist
+          fi
+
       - name: Read version
         run: |
           VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" Burrow/Info.plist)
           BUILD=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" Burrow/Info.plist)
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "Building Burrow $VERSION (build $BUILD)"
           echo "ARTIFACT=Burrow-$VERSION-build$BUILD-${GITHUB_SHA::7}" >> "$GITHUB_ENV"
 
       - name: Import Developer ID certificate
