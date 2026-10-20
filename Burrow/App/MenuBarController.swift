@@ -117,7 +117,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         display.submenu = displaySub
         menu.addItem(display)
 
-        let alertOnly = action("Only Post When Low", #selector(toggleAlertOnly))
+        let alertOnly = action("Only Post Alerts", #selector(toggleAlertOnly))
         alertOnly.state = vm.settings.alertOnly ? .on : .off
         alertOnly.isEnabled = vm.isSlackConfigured
         menu.addItem(alertOnly)

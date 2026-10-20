@@ -88,6 +88,19 @@ final class DiskMonitorViewModel: ObservableObject {
     /// notification fires when this set grows; a path is only added once
     /// the notification was actually delivered.
     private var alertingPaths: Set<String> = []
+    /// When each currently unreadable path was first found unreadable, so a
+    /// long outage doesn't keep the low hold.
+    private var unreadableSince: [String: Date] = [:]
+    /// Unreadable paths already reported to Slack in this outage. Only set
+    /// once a post succeeded, so a failed post (or Slack set up later) still
+    /// reports it.
+    private var postedOutages: Set<String> = []
+    /// A path that was alerted as low and then unreadable for longer than
+    /// this is alerted again if it comes back still low. With a few minutes'
+    /// slack, so on a daily schedule "unreadable at one run, back at the
+    /// next" always counts, whatever the run's exact second.
+    static let unreadableHoldLimit: TimeInterval = 24 * 60 * 60
+    private static let holdLimitSlack: TimeInterval = 5 * 60
     /// A low-disk notification couldn't be delivered yet (permission still
     /// undetermined); granting permission re-checks right away.
     private var notificationPending = false
@@ -178,6 +191,8 @@ final class DiskMonitorViewModel: ObservableObject {
         guard settings.enabled else {
             // Start fresh next time: a disk still low on re-enable notifies again.
             alertingPaths = []
+            unreadableSince = [:]
+            postedOutages = []
             notificationPending = false
             lastReadings = []
             topFoldersCache = nil
@@ -307,16 +322,30 @@ final class DiskMonitorViewModel: ObservableObject {
 
         let gen = generation
         let s = settings
+        // Outages are timed from when the check started, not how long the read took.
+        let now = deps.now()
         let readings = await deps.readAll(s.paths)
         guard gen == generation else { return }
         lastReadings = readings
         lastChecked = Date()
 
         let low = Set(readings.filter { $0.isLow(threshold: s.thresholdPercent) }.map(\.path))
+        let failed = Set(readings.filter(\.failed).map(\.path))
+        // Outages: a path that's back after more than a day is alerted again
+        // if still low; one not yet reported is posted once (below).
+        for (path, since) in unreadableSince where !failed.contains(path) {
+            if now.timeIntervalSince(since) > Self.unreadableHoldLimit - Self.holdLimitSlack {
+                alertingPaths.remove(path)
+            }
+            unreadableSince[path] = nil
+        }
+        for path in failed where unreadableSince[path] == nil { unreadableSince[path] = now }
+        postedOutages.formIntersection(failed)
+        let unreportedOutages = failed.subtracting(postedOutages)
         // A path that was low and now can't be read (a NAS timing out, a
         // drive unplugged) stays counted, so it doesn't notify again when
-        // it's back and still low.
-        let alerting = low.union(alertingPaths.intersection(readings.filter(\.failed).map(\.path)))
+        // it's back and still low — unless it was gone for over a day.
+        let alerting = low.union(alertingPaths.intersection(failed))
         if alerting.isSubset(of: alertingPaths) {
             alertingPaths = alerting
             notificationPending = false
@@ -339,7 +368,8 @@ final class DiskMonitorViewModel: ObservableObject {
         }
 
         let alert = !low.isEmpty
-        guard alert || !s.alertOnly else { return }
+        // Alert-only still posts a path that became unreadable, once per outage.
+        guard alert || !unreportedOutages.isEmpty || !s.alertOnly else { return }
 
         // The report only goes to Slack. Without a token and a channel there is
         // nothing to send, so don't walk the home folder either: it's slow, and
@@ -357,7 +387,9 @@ final class DiskMonitorViewModel: ObservableObject {
             host: s.displayName, readings: readings, threshold: s.thresholdPercent,
             topFolders: top, includeTopSection: wantTop, mentions: settings.slackMentions
         )
-        await post(message, token: token, channel: settings.slackChannel, success: "Report sent to Slack.")
+        let posted = await post(message, token: token, channel: settings.slackChannel, success: "Report sent to Slack.")
+        // Any report listing an unreadable path reports its outage.
+        if posted && gen == generation { postedOutages.formUnion(failed) }
     }
 
     /// The cached list while it's fresh and no new path became low;
@@ -386,13 +418,16 @@ final class DiskMonitorViewModel: ObservableObject {
         await post(message, token: token, channel: settings.slackChannel, success: "Test message sent.")
     }
 
-    private func post(_ message: SlackClient.Message, token: String, channel: String, success: String) async {
+    @discardableResult
+    private func post(_ message: SlackClient.Message, token: String, channel: String, success: String) async -> Bool {
         do {
             try await deps.post(message, token, channel)
             slackStatus = success
+            return true
         } catch {
             logger.error("Slack post failed: \(error.localizedDescription, privacy: .public)")
             slackStatus = Self.explain(error)
+            return false
         }
     }
 

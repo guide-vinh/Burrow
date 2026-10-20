@@ -78,11 +78,6 @@ struct MonitoringGeneralSection: View {
                         .onSubmit(applyPaths)
                     Button("Set", action: applyPaths)
                 }
-                if !vm.unreadablePaths.isEmpty {
-                    Text("Couldn't be read: \(vm.unreadablePaths.joined(separator: ", ")). Not mounted, mistyped or not responding? It's still checked; it shows as unreadable, not as low on space.")
-                        .font(.captionM)
-                        .foregroundStyle(Color.fgMuted)
-                }
 
                 // A draft, saved shortly after typing stops (and on Return or
                 // leaving the tab) — not a UserDefaults write per keystroke,
@@ -224,7 +219,7 @@ struct MonitoringSlackSection: View {
                 .onSubmit { saveAll() }
             if let mentionsError { errorText(mentionsError) }
 
-            Toggle("Only post when space is low", isOn: $vm.settings.alertOnly)
+            Toggle("Only post alerts", isOn: $vm.settings.alertOnly)
             Toggle("Include largest folders on alerts", isOn: $vm.settings.includeTopFolders)
 
             HStack {

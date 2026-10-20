@@ -100,7 +100,10 @@ private struct VolumeRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.xs) {
             HStack {
-                Text(reading.path).font(.bodySMed).foregroundStyle(Color.fgPrimary)
+                // Amber when unreadable: worth a look,
+                // but red stays for low space.
+                Text(reading.path).font(.bodySMed)
+                    .foregroundStyle(reading.failed ? Color.Risk.medFG : Color.fgPrimary)
                 Spacer()
                 Text(detail)
                     .font(.captionM)
@@ -121,10 +124,12 @@ private struct VolumeRow: View {
                     }
                 }
                 .frame(height: 8)
-                // Drawn by hand, so tell VoiceOver what it shows.
-                .accessibilityElement()
-                .accessibilityLabel("Space used")
-                .accessibilityValue("\(DiskMonitorReport.percent(reading.usedPercent)) percent")
+                // Drawn by hand: VoiceOver gets a real progress indicator.
+                .accessibilityRepresentation {
+                    ProgressView(value: fraction)
+                        .accessibilityLabel("Space used")
+                        .accessibilityValue("\(DiskMonitorReport.percent(reading.usedPercent)) percent")
+                }
             }
         }
         .padding(.vertical, Spacing.xs)

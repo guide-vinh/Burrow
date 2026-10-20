@@ -32,7 +32,8 @@ struct DiskMonitorSettings: Codable, Equatable {
     var slackChannelLink = ""
     /// Slack user (U.../W...) or user-group (S...) IDs tagged on alerts.
     var slackMentions: [String] = []
-    /// Post to Slack only when a volume is low.
+    /// Post to Slack only alerts: a volume is low, or (once per outage) a
+    /// path couldn't be read.
     var alertOnly = true
     /// Attach the largest folders in the home directory to alerts.
     var includeTopFolders = true

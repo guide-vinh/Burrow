@@ -48,6 +48,8 @@ enum DiskMonitorReport {
 
     static let alertColor = "#E01E5A"
     static let okColor = "#31E5C5"
+    /// A path couldn't be read, but nothing is low.
+    static let warnColor = "#ECB22E"
 
     // MARK: - Reading volumes
 
@@ -210,7 +212,12 @@ enum DiskMonitorReport {
             lines.append("Free space `\(escape(r.path))`: *\(gb(r.free))* of \(gb(r.total)) "
                 + "(\(percent(r.freePercent))% free, threshold \(Self.threshold(threshold))\(state))")
         }
-        if alert { lines.append("The disk is running low - this needs a look.") }
+        let unreadable = readings.contains(where: \.failed)
+        if alert {
+            lines.append("The disk is running low - this needs a look.")
+        } else if unreadable {
+            lines.append("A watched path couldn't be read - check that it's mounted.")
+        }
         lines.append("Checked: \(stampFormatter.string(from: now))")
 
         var blocks = [SlackClient.Block.section(lines.joined(separator: "\n"))]
@@ -226,11 +233,13 @@ enum DiskMonitorReport {
 
         // Mentions go in the top-level text, not an attachment block: Slack
         // reliably notifies for mentions in the message body.
-        var text = alert ? ":warning: Low disk space - \(host)" : ":file_folder: Disk report - \(host)"
+        var text = alert ? ":warning: Low disk space - \(host)"
+            : unreadable ? ":grey_question: Path couldn't be read - \(host)"
+            : ":file_folder: Disk report - \(host)"
         if alert && !mentions.isEmpty {
             text += "\n" + mentions.map(SlackClient.mention).joined(separator: " ")
         }
-        return SlackClient.Message(text: text, attachments: [.init(color: alert ? alertColor : okColor, blocks: blocks)])
+        return SlackClient.Message(text: text, attachments: [.init(color: alert ? alertColor : unreadable ? warnColor : okColor, blocks: blocks)])
     }
 
     /// Footer on every message, so the channel can tell Burrow's reports

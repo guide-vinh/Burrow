@@ -347,7 +347,17 @@ final class DiskMonitorTests: XCTestCase {
         let text = try XCTUnwrap(msg.attachments.first?.blocks.first?.mrkdwn)
         XCTAssertTrue(text.contains("Host: *&lt;!channel&gt; &amp; co*"))
         XCTAssertTrue(text.contains("`/Volumes/&lt;X&gt;`: *not measured*"))
-        XCTAssertEqual(msg.text, ":file_folder: Disk report - &lt;!channel&gt; &amp; co")
+        // A warning, not the OK colour, though nothing is low.
+        XCTAssertEqual(msg.text, ":grey_question: Path couldn't be read - &lt;!channel&gt; &amp; co")
+        XCTAssertEqual(msg.attachments.first?.color, DiskMonitorReport.warnColor)
+        XCTAssertTrue(text.contains("couldn't be read - check that it's mounted"))
+
+        // Low wins over unreadable.
+        let low = Reading(path: "/", total: 100 * gb, free: 1 * gb, failed: false)
+        let both = DiskMonitorReport.message(host: "M", readings: [low, .unreadable("/Volumes/X")],
+                                             threshold: 10, topFolders: nil, mentions: [])
+        XCTAssertEqual(both.attachments.first?.color, DiskMonitorReport.alertColor)
+        XCTAssertTrue(both.text.hasPrefix(":warning: Low disk space"))
     }
 
     func testTopSectionWhenScanCouldNotRunOrIsEmpty() throws {
@@ -604,6 +614,7 @@ final class DiskMonitorTests: XCTestCase {
         var free: [String: Int64] = [:]
         var unreadable: Set<String> = []
         var postDelay: UInt64 = 0
+        var postFails = false
         var scanDelay: UInt64 = 0
         var partialScan = false
         var readDelay: UInt64 = 0
@@ -656,6 +667,7 @@ final class DiskMonitorTests: XCTestCase {
         }
         deps.post = { msg, token, channel in
             if spy.postDelay > 0 { try await Task.sleep(nanoseconds: spy.postDelay) }
+            if spy.postFails { throw SlackClient.SlackError.api("internal_error") }
             spy.posts.append((msg, token, channel))
         }
         deps.authorize = {
@@ -708,13 +720,16 @@ final class DiskMonitorTests: XCTestCase {
         XCTAssertFalse(vm.isAlert)
         XCTAssertEqual(vm.unreadablePaths, ["/Volumes/Backup"])
         XCTAssertEqual(spy.notifications, 0)
-        XCTAssertTrue(spy.posts.isEmpty)   // alertOnly: nothing is low
+        // Not a low-disk alert: one "couldn't be read" post for the outage.
+        XCTAssertEqual(spy.posts.count, 1)
+        XCTAssertTrue(spy.posts[0].0.text.hasPrefix(":grey_question:"))
+        XCTAssertEqual(spy.scans, 0)
 
         spy.free["/"] = 5 * gb
         await vm.check()
         XCTAssertTrue(vm.isAlert)
         XCTAssertEqual(spy.notifications, 1)
-        XCTAssertEqual(spy.posts.count, 1)
+        XCTAssertEqual(spy.posts.count, 2)
 
         // Readable again: no longer listed.
         spy.unreadable = []
@@ -736,13 +751,98 @@ final class DiskMonitorTests: XCTestCase {
         spy.unreadable = ["/Volumes/NAS"]   // read timed out once
         await vm.check()
         XCTAssertFalse(vm.isAlert)
-        // Nothing is low meanwhile: no alert-only post, no folder scan.
-        XCTAssertEqual(spy.posts.count, 1)
+        // Nothing is low meanwhile: only the outage post, no low alert, no
+        // folder scan.
+        XCTAssertEqual(spy.posts.count, 2)
+        XCTAssertFalse(spy.posts[1].0.text.hasPrefix(":warning:"))
         XCTAssertEqual(spy.scans, 1)
         spy.unreadable = []
         await vm.check()
         XCTAssertEqual(spy.notifications, 1)
+        XCTAssertEqual(spy.posts.count, 3)
+    }
+
+    /// Low, then unreadable for `outage`, then back still low.
+    @MainActor
+    private func notificationsAfterOutage(_ outage: TimeInterval) async throws -> Int {
+        let spy = Spy()
+        spy.free["/Volumes/NAS"] = 1 * gb
+        let (vm, cleanup) = try makeVM(spy) { $0.paths = ["/", "/Volumes/NAS"] }
+        defer { cleanup() }
+
+        await vm.check()
+        spy.unreadable = ["/Volumes/NAS"]
+        await vm.check()
+        spy.now = spy.now.addingTimeInterval(outage)
+        await vm.check()
+        spy.unreadable = []
+        await vm.check()
+        return spy.notifications
+    }
+
+    @MainActor
+    func testLowPathBackAfterMoreThanADayAlertsAgain() async throws {
+        let day = DiskMonitorViewModel.unreadableHoldLimit
+        // Under a day (beyond the few minutes' slack): still held.
+        let shorter = try await notificationsAfterOutage(day - 10 * 60)
+        XCTAssertEqual(shorter, 1)
+        // A day, as between two daily runs: alerted again.
+        let aDay = try await notificationsAfterOutage(day)
+        XCTAssertEqual(aDay, 2)
+    }
+
+    @MainActor
+    func testOutageIsPostedOnceAPostSucceeds() async throws {
+        let spy = Spy()
+        spy.unreadable = ["/Volumes/NAS"]
+        spy.postFails = true   // e.g. the network is down too
+        let (vm, cleanup) = try makeVM(spy) { $0.paths = ["/", "/Volumes/NAS"] }
+        defer { cleanup() }
+
+        await vm.check()
+        XCTAssertTrue(spy.posts.isEmpty)
+        spy.postFails = false
+        await vm.check()
+        XCTAssertEqual(spy.posts.count, 1)
+        await vm.check()
+        XCTAssertEqual(spy.posts.count, 1)
+    }
+
+    @MainActor
+    func testOutageWithoutSlackPostsNothingAndDoesNotScan() async throws {
+        let spy = Spy()
+        spy.unreadable = ["/Volumes/NAS"]
+        let (vm, cleanup) = try makeVM(spy, token: nil) { $0.paths = ["/", "/Volumes/NAS"] }
+        defer { cleanup() }
+
+        await vm.check()
+        XCTAssertTrue(spy.posts.isEmpty)
+        XCTAssertEqual(spy.scans, 0)
+        XCTAssertEqual(spy.notifications, 0)
+    }
+
+    @MainActor
+    func testUnreadablePathIsPostedOncePerOutage() async throws {
+        let spy = Spy()   // alert-only (the default), "/" healthy
+        let (vm, cleanup) = try makeVM(spy) { $0.paths = ["/", "/Volumes/NAS"] }
+        defer { cleanup() }
+
+        await vm.check()
+        XCTAssertTrue(spy.posts.isEmpty)
+        spy.unreadable = ["/Volumes/NAS"]
+        await vm.check()
+        XCTAssertEqual(spy.posts.count, 1)
+        await vm.check()
+        await vm.check()
+        XCTAssertEqual(spy.posts.count, 1)   // none while it stays unreadable
+        spy.unreadable = []
+        await vm.check()
+        XCTAssertEqual(spy.posts.count, 1)
+        spy.unreadable = ["/Volumes/NAS"]    // a new outage
+        await vm.check()
         XCTAssertEqual(spy.posts.count, 2)
+        XCTAssertEqual(spy.notifications, 0)
+        XCTAssertEqual(spy.scans, 0)
     }
 
     @MainActor
