@@ -18,8 +18,9 @@ make release   # Full signed + notarized release (prompts for version)
 make hooks     # Install git commit-msg hook
 ```
 
-CI: Actions → "Notarized build" (manual dispatch). Build-only by default; tick `release`
-and give a `version` to publish like `make release` (`dry_run` to try it without publishing).
+CI: Actions → "Notarized build" (manual dispatch). Build-only by default; tick `release` to
+publish like `make release`: version and build are bumped from `Info.plist` on main (`bump`:
+patch/minor/major, or type a `version`); `dry_run` tries it without publishing.
 
 Xcode project: `Burrow.xcodeproj` (no SPM manifest; dependencies vendored under `build/SourcePackages`).
 
