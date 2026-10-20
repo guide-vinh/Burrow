@@ -15,5 +15,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard !Self.isTestHost else { return }
         diskMonitor.start()
         MenuBarController.shared.attach(diskMonitor)
+        DockPresence.start()
+    }
+
+    /// Opening Burrow again (Finder, Spotlight) while it only lives in the
+    /// menu bar: bring the Dock icon back before SwiftUI opens a window.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !flag { DockPresence.windowWillShow() }
+        return true
     }
 }
