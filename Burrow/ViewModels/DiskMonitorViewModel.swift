@@ -327,17 +327,25 @@ final class DiskMonitorViewModel: ObservableObject {
         hasSlackToken = keychain.read(Self.tokenAccount) != nil
     }
 
-    /// Stores a new token. Blank input is ignored — removing the token is
-    /// the explicit "Remove Token" button, never a side effect of Save.
-    func saveSlackToken(_ token: String) {
+    /// Stores a new token; true when it was written. Blank input is ignored —
+    /// removing the token is the explicit "Remove Token" button, never a side
+    /// effect of saving.
+    @discardableResult
+    func saveSlackToken(_ token: String) -> Bool {
         let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
+        guard !trimmed.isEmpty else { return false }
         if keychain.write(trimmed, for: Self.tokenAccount) {
             hasSlackToken = true
             slackStatus = "Token saved to the Keychain."
-        } else {
-            slackStatus = "Couldn't save the token to the Keychain."
+            return true
         }
+        slackStatus = "Couldn't save the token to the Keychain."
+        return false
+    }
+
+    /// Status line after the Slack channel or tags were saved.
+    func noteSlackSettingsSaved() {
+        slackStatus = "Slack settings saved."
     }
 
     func removeSlackToken() {
