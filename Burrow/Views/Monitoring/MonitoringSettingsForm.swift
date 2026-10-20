@@ -28,12 +28,10 @@ struct MonitoringGeneralSection: View {
                 }
 
                 Picker("Alert when free space ≤", selection: $vm.settings.thresholdPercent) {
-                    ForEach(DiskMonitorSettings.thresholdPresets, id: \.self) { value in
+                    // A value saved by an earlier version that isn't a choice
+                    // now is listed too, in order.
+                    ForEach(thresholdChoices, id: \.self) { value in
                         Text(MenuBarFormat.percent(value)).tag(value)
-                    }
-                    // A value saved by an earlier version that isn't a choice now.
-                    if !DiskMonitorSettings.thresholdPresets.contains(vm.settings.thresholdPercent) {
-                        Text(MenuBarFormat.percent(vm.settings.thresholdPercent)).tag(vm.settings.thresholdPercent)
                     }
                 }
 
@@ -50,29 +48,39 @@ struct MonitoringGeneralSection: View {
                     .pickerStyle(.segmented)
                     .labelsHidden()
                     .fixedSize()
-                    switch vm.settings.schedule {
-                    case .interval:
-                        Picker("Check every", selection: $vm.settings.intervalMinutes) {
-                            ForEach(DiskMonitorSettings.intervalPresets, id: \.self) { minutes in
-                                Text(intervalLabel(minutes)).tag(minutes)
+                    // Fixed width, so the segmented control doesn't shift when
+                    // the control next to it changes.
+                    Group {
+                        switch vm.settings.schedule {
+                        case .interval:
+                            Picker("Check every", selection: $vm.settings.intervalMinutes) {
+                                ForEach(DiskMonitorSettings.intervalPresets, id: \.self) { minutes in
+                                    Text(intervalLabel(minutes)).tag(minutes)
+                                }
                             }
-                        }
-                        .labelsHidden()
-                        .fixedSize()
-                    case .daily:
-                        DatePicker("Check at", selection: dailyTime, displayedComponents: .hourAndMinute)
                             .labelsHidden()
                             .fixedSize()
-                            .tooltip("Once a day at this time. If the Mac is asleep then, the check runs when it wakes.")
+                        case .daily:
+                            DatePicker("Check at", selection: dailyTime, displayedComponents: .hourAndMinute)
+                                .labelsHidden()
+                                .fixedSize()
+                                .tooltip("Once a day at this time. If the Mac is asleep or Burrow isn't running then, the check runs when it wakes or opens.")
+                        }
                     }
+                    .frame(width: 112, alignment: .trailing)
                 }
 
                 HStack {
                     // Short label so it fits on one line next to the field and
                     // Set button; the placeholder shows the comma-separated form.
-                    TextField("Volumes", text: $pathsDraft, prompt: Text("/, /Volumes/Data"))
+                    TextField("Paths", text: $pathsDraft, prompt: Text("/, /Volumes/Data"))
                         .onSubmit(applyPaths)
                     Button("Set", action: applyPaths)
+                }
+                if !missingPaths.isEmpty {
+                    Text("Not found: \(missingPaths.joined(separator: ", ")). It's checked anyway and reported as unreadable until it's there.")
+                        .font(.captionM)
+                        .foregroundStyle(Color.fgMuted)
                 }
 
                 // A draft, saved shortly after typing stops (and on Return or
@@ -101,7 +109,7 @@ struct MonitoringGeneralSection: View {
             Button("Cancel", role: .cancel) {}
             Button("Reset", role: .destructive) { vm.resetSettings() }
         } message: {
-            Text("Threshold, schedule, volumes, name in reports and display options go back to their defaults. Whether monitoring is on and your Slack settings are kept.")
+            Text("Threshold, schedule, volumes, name in reports and display options go back to their defaults. Whether monitoring is on and your Slack settings are kept. If monitoring is on, it may check right away, which can notify or post to Slack.")
         }
         .onAppear(perform: loadDrafts)
         // A reset (or the menu bar) can change these while the tab is open.
@@ -112,6 +120,18 @@ struct MonitoringGeneralSection: View {
             if saved != nameDraft.trimmingCharacters(in: .whitespacesAndNewlines) { loadName() }
         }
         .onDisappear(perform: applyName)
+    }
+
+    private var thresholdChoices: [Double] {
+        Array(Set(DiskMonitorSettings.thresholdPresets + [vm.settings.thresholdPercent])).sorted()
+    }
+
+    /// Entered paths that don't exist right now (e.g. a typo, or a volume
+    /// that isn't mounted).
+    private var missingPaths: [String] {
+        vm.settings.paths.filter {
+            !FileManager.default.fileExists(atPath: ($0 as NSString).expandingTildeInPath)
+        }
     }
 
     private func applyPaths() {

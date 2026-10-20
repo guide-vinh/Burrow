@@ -77,65 +77,131 @@ enum DiskUsageScanner {
         var failed = false
     }
 
-    /// Cancelling the task terminates `du`; the folders it had finished are
-    /// still returned, with `complete == false`. `sameVolume` adds `-x`.
-    /// Output is read while `du` runs: a deep listing can exceed the pipe
-    /// buffer, and reading only after exit would then block both sides.
-    static func scanTree(_ url: URL, depth: Int, excluding: [String] = [], sameVolume: Bool = false) async -> TreeScan {
+    /// Cancelling the task stops `du`; the folders it had finished are still
+    /// returned, with `complete == false`. `sameVolume` adds `-x`.
+    ///
+    /// Output is read as it arrives (a deep listing can exceed the pipe
+    /// buffer). Stopping escalates: SIGTERM, then SIGKILL after `killGrace`,
+    /// and after another `killGrace` the scan returns what it has even if
+    /// `du` hasn't exited — one stuck in uninterruptible I/O (a broken
+    /// network or File Provider mount) ignores both signals.
+    /// `command` replaces `/usr/bin/du` and its arguments, for tests.
+    static func scanTree(
+        _ url: URL,
+        depth: Int,
+        excluding: [String] = [],
+        sameVolume: Bool = false,
+        killGrace: TimeInterval = 5,
+        command: (URL, [String])? = nil
+    ) async -> TreeScan {
         var args = ["-d", String(depth), "-k"]
         if sameVolume { args.append("-x") }
         for name in excluding { args.append(contentsOf: ["-I", name]) }
         args.append(url.standardizedFileURL.path)
 
         let process = Process()
+        let run = TreeRun()
         return await withTaskCancellationHandler {
             await withCheckedContinuation { (cont: CheckedContinuation<TreeScan, Never>) in
-                process.executableURL = URL(fileURLWithPath: "/usr/bin/du")
-                process.arguments = args
+                run.setContinuation(cont)
+                process.executableURL = command?.0 ?? URL(fileURLWithPath: "/usr/bin/du")
+                process.arguments = command?.1 ?? args
                 let pipe = Pipe()
                 process.standardOutput = pipe
                 process.standardError = FileHandle.nullDevice
-                // Resume once both the output is fully read and du has exited.
+                pipe.fileHandleForReading.readabilityHandler = { handle in
+                    let chunk = handle.availableData
+                    if chunk.isEmpty {
+                        handle.readabilityHandler = nil
+                        run.reachedEOF()
+                    } else {
+                        run.append(chunk)
+                    }
+                }
                 // terminationHandler, not waitUntilExit(): the latter waits on
-                // the calling thread's run loop and can hang on a GCD thread
-                // when du exits right away (e.g. terminated just after launch).
-                let done = DispatchGroup()
-                var data = Data()
-                done.enter()
-                process.terminationHandler = { _ in done.leave() }
+                // the calling thread's run loop and can hang on a GCD thread.
+                process.terminationHandler = { p in run.exited(normally: p.terminationReason == .exit) }
                 if Task.isCancelled {
-                    cont.resume(returning: TreeScan(sizes: [:], complete: false))
+                    pipe.fileHandleForReading.readabilityHandler = nil
+                    run.finish(complete: false)
                     return
                 }
                 do {
                     try process.run()
-                    if Task.isCancelled { process.terminate() }
+                    if Task.isCancelled { stop(process, run, grace: killGrace) }
                 } catch {
                     logger.error("du launch failed: \(error.localizedDescription, privacy: .public)")
-                    cont.resume(returning: TreeScan(sizes: [:], complete: false, failed: true))
-                    return
-                }
-                done.enter()
-                DispatchQueue.global(qos: .utility).async {
-                    // EOF arrives when du exits or is terminated.
-                    data = pipe.fileHandleForReading.readDataToEndOfFile()
-                    done.leave()
-                }
-                done.notify(queue: .global(qos: .utility)) {
-                    var output = String(decoding: data, as: UTF8.self)
-                    // A terminated du can stop mid-line; drop that fragment
-                    // so a cut-off path never becomes a bogus folder.
-                    if !output.hasSuffix("\n") {
-                        output = output.lastIndex(of: "\n").map { String(output[...$0]) } ?? ""
-                    }
-                    cont.resume(returning: TreeScan(
-                        sizes: parseSizes(output),
-                        complete: process.terminationReason == .exit
-                    ))
+                    pipe.fileHandleForReading.readabilityHandler = nil
+                    run.finish(complete: false, failed: true)
                 }
             }
         } onCancel: {
-            if process.isRunning { process.terminate() }
+            stop(process, run, grace: killGrace)
+        }
+    }
+
+    /// SIGTERM now, SIGKILL after `grace`, then give up waiting after
+    /// another `grace` and return the output read so far.
+    private static func stop(_ process: Process, _ run: TreeRun, grace: TimeInterval) {
+        if process.isRunning { process.terminate() }
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + grace) {
+            if process.isRunning { kill(process.processIdentifier, SIGKILL) }
+            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + grace) {
+                run.finish(complete: false)
+            }
+        }
+    }
+
+    /// Collects one `du` run's output and resumes the scan exactly once:
+    /// when the output has ended and the process has exited, or when
+    /// `finish` is called first (cancelled before launch, launch failed,
+    /// or a stuck process that's no longer worth waiting for).
+    private final class TreeRun: @unchecked Sendable {
+        private let lock = NSLock()
+        private var data = Data()
+        private var eof = false
+        private var exitedNormally: Bool?
+        private var resumed = false
+        private var continuation: CheckedContinuation<TreeScan, Never>?
+
+        func setContinuation(_ cont: CheckedContinuation<TreeScan, Never>) {
+            lock.lock(); continuation = cont; lock.unlock()
+        }
+
+        func append(_ chunk: Data) {
+            lock.lock(); data.append(chunk); lock.unlock()
+        }
+
+        func reachedEOF() {
+            lock.lock(); eof = true; lock.unlock()
+            finishIfDone()
+        }
+
+        func exited(normally: Bool) {
+            lock.lock(); exitedNormally = normally; lock.unlock()
+            finishIfDone()
+        }
+
+        private func finishIfDone() {
+            lock.lock()
+            let done = eof && exitedNormally != nil
+            let complete = exitedNormally == true
+            lock.unlock()
+            if done { finish(complete: complete) }
+        }
+
+        func finish(complete: Bool, failed: Bool = false) {
+            lock.lock()
+            guard !resumed, let cont = continuation else { lock.unlock(); return }
+            resumed = true
+            var output = String(decoding: data, as: UTF8.self)
+            lock.unlock()
+            // A stopped du can end mid-line; drop that fragment so a cut-off
+            // path never becomes a bogus folder.
+            if !output.hasSuffix("\n") {
+                output = output.lastIndex(of: "\n").map { String(output[...$0]) } ?? ""
+            }
+            cont.resume(returning: TreeScan(sizes: parseSizes(output), complete: complete, failed: failed))
         }
     }
 

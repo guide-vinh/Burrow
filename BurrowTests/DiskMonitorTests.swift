@@ -71,9 +71,12 @@ final class DiskMonitorTests: XCTestCase {
 
     func testMenuBarLines() {
         let r = Reading(path: "/", total: 494_400_000_000, free: 130_700_000_000, failed: false)
-        XCTAssertEqual(MenuBarFormat.line(for: r), "/  —  74% used, 130.7 GB free of 494.4 GB")
+        XCTAssertEqual(MenuBarFormat.line(for: r), "/  —  73.6% used, 130.7 GB free of 494.4 GB")
         XCTAssertEqual(MenuBarFormat.line(for: .unreadable("/X")), "/X  —  couldn't be read")
-        XCTAssertEqual(MenuBarFormat.line(for: r, display: .free), "/  —  26% free, 130.7 GB of 494.4 GB")
+        XCTAssertEqual(MenuBarFormat.line(for: r, display: .free), "/  —  26.4% free, 130.7 GB of 494.4 GB")
+        // Not rounded up to a 5% threshold.
+        let tight = Reading(path: "/", total: 1000 * gb, free: 48 * gb, failed: false)
+        XCTAssertEqual(MenuBarFormat.usage(tight, .free), "4.8% free, 48.0 GB of 1000.0 GB")
         XCTAssertEqual(MenuBarFormat.schedule(last: nil, next: nil), "Not checked yet")
         let cal = Calendar.current
         let last = cal.date(from: DateComponents(year: 2026, month: 10, day: 19, hour: 18, minute: 5))!
@@ -83,8 +86,22 @@ final class DiskMonitorTests: XCTestCase {
 
     // MARK: - Validation
 
-    func testThresholdPresetsAreFivePercentStepsToFifty() {
-        XCTAssertEqual(DiskMonitorSettings.thresholdPresets, [5, 10, 15, 20, 25, 30, 35, 40, 45, 50])
+    func testThresholdPresetsGoFromOneToFifty() {
+        XCTAssertEqual(DiskMonitorSettings.thresholdPresets, [1, 2, 3, 4, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50])
+    }
+
+    func testLastScheduledRun() throws {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = try XCTUnwrap(TimeZone(identifier: "Asia/Ho_Chi_Minh"))
+        func at(_ day: Int, _ hour: Int, _ minute: Int) -> Date {
+            cal.date(from: DateComponents(year: 2026, month: 10, day: day, hour: hour, minute: minute))!
+        }
+        var s = DiskMonitorSettings()
+        s.schedule = .daily
+        s.dailyMinute = 5 * 60
+        XCTAssertEqual(s.lastScheduledRun(atOrBefore: at(20, 9, 0), calendar: cal), at(20, 5, 0), "today's has come")
+        XCTAssertEqual(s.lastScheduledRun(atOrBefore: at(20, 4, 0), calendar: cal), at(19, 5, 0), "not yet: yesterday's")
+        XCTAssertEqual(s.lastScheduledRun(atOrBefore: at(20, 5, 0), calendar: cal), at(20, 5, 0))
     }
 
     func testParseChannel() throws {
@@ -481,6 +498,46 @@ final class DiskMonitorTests: XCTestCase {
         XCTAssertLessThan(Date().timeIntervalSince(start), 3)
     }
 
+    func testScanTreeKillsAProcessThatIgnoresTerm() async throws {
+        // Stands in for a du that won't stop on SIGTERM. It records its pid
+        // so the test can check it was actually killed, not just abandoned.
+        let pidFile = NSTemporaryDirectory() + "burrow-scantree-\(UUID().uuidString).pid"
+        defer { try? FileManager.default.removeItem(atPath: pidFile) }
+        let start = Date()
+        let task = Task {
+            await DiskUsageScanner.scanTree(URL(fileURLWithPath: "/"), depth: 1, killGrace: 0.3,
+                                            command: (URL(fileURLWithPath: "/bin/sh"),
+                                                      ["-c", "echo $$ > '\(pidFile)'; trap '' TERM; echo '4\t/a'; while :; do sleep 0.1; done"]))
+        }
+        try await Task.sleep(nanoseconds: 300_000_000)
+        task.cancel()
+        let tree = await task.value
+        XCTAssertFalse(tree.complete)
+        XCTAssertEqual(tree.sizes["/a"], 4 * 1024, "output read before the stop is kept")
+        XCTAssertLessThan(Date().timeIntervalSince(start), 3)
+
+        let pid = try XCTUnwrap(Int32(String(contentsOfFile: pidFile).trimmingCharacters(in: .whitespacesAndNewlines)))
+        XCTAssertEqual(kill(pid, 0), -1, "SIGKILL ended the process that ignored SIGTERM")
+    }
+
+    func testScanTreeGivesUpOnAProcessThatNeverLetsGo() async {
+        // The shell is killed, but a child keeps the pipe open, so EOF never
+        // comes — like a du stuck in uninterruptible I/O. The scan must
+        // still return after the grace periods.
+        let start = Date()
+        let task = Task {
+            await DiskUsageScanner.scanTree(URL(fileURLWithPath: "/"), depth: 1, killGrace: 0.3,
+                                            command: (URL(fileURLWithPath: "/bin/sh"),
+                                                      ["-c", "trap '' TERM; echo '8\t/b'; sleep 5"]))
+        }
+        try? await Task.sleep(nanoseconds: 300_000_000)
+        task.cancel()
+        let tree = await task.value
+        XCTAssertFalse(tree.complete)
+        XCTAssertEqual(tree.sizes["/b"], 8 * 1024)
+        XCTAssertLessThan(Date().timeIntervalSince(start), 3)
+    }
+
     func testParseSizesSkipsBrokenLines() {
         let sizes = DiskUsageScanner.parseSizes("10\t/a\n20\t/a/b\nnot a line\n\t/c\n")
         XCTAssertEqual(sizes, ["/a": Int64(10 * 1024), "/a/b": Int64(20 * 1024)])
@@ -516,6 +573,9 @@ final class DiskMonitorTests: XCTestCase {
     func testPartialListIsLabelled() {
         let text = DiskMonitorReport.formatTop(.init(folders: [.init(path: "/x", bytes: gb)], stoppedAfter: 300))
         XCTAssertTrue(text.contains("Scan stopped after 5 min"))
+        // Stopped early (killed, cancelled): no claim about a time limit.
+        let early = DiskMonitorReport.formatTop(.init(folders: [], stoppedAfter: 12))
+        XCTAssertTrue(early.contains("Scan stopped before it finished"))
         XCTAssertFalse(DiskMonitorReport.formatTop(.init(folders: [.init(path: "/x", bytes: gb)])).contains("Scan stopped"))
     }
 
@@ -892,6 +952,53 @@ final class DiskMonitorTests: XCTestCase {
         await waitUntil { spy.posts.count == 1 }
         XCTAssertEqual(spy.posts.count, 1)
         XCTAssertGreaterThan(try XCTUnwrap(vm.nextCheck), spy.now, "next run moves to the following day")
+        vm.settings.enabled = false
+    }
+
+    @MainActor
+    func testMissedDailyRunIsCaughtUpAtLaunch() async throws {
+        let spy = Spy()
+        let (vm, cleanup) = try makeVM(spy) { $0.enabled = true; $0.schedule = .daily; $0.alertOnly = false }
+        defer { cleanup(); vm.settings.enabled = false }
+        // Last daily run two days ago: today's (or yesterday's) was missed.
+        vm.setLastDailyRunForTesting(spy.now.addingTimeInterval(-2 * 24 * 3600))
+
+        vm.start()
+        await waitUntil { spy.posts.count == 1 }
+        XCTAssertEqual(spy.posts.count, 1)
+    }
+
+    @MainActor
+    func testNoCatchUpAtLaunchWhenNothingWasMissedButReadingsShow() async throws {
+        let spy = Spy()
+        let (vm, cleanup) = try makeVM(spy) { $0.enabled = true; $0.schedule = .daily; $0.alertOnly = false }
+        defer { cleanup(); vm.settings.enabled = false }
+        vm.setLastDailyRunForTesting(spy.now)
+
+        vm.start()
+        await waitUntil { !vm.lastReadings.isEmpty }
+        await settle()
+        XCTAssertTrue(spy.posts.isEmpty)
+        XCTAssertEqual(spy.notifications, 0)
+        XCTAssertFalse(vm.lastReadings.isEmpty, "the tab still gets numbers")
+        XCTAssertNil(vm.lastChecked, "a read-only refresh isn't a check")
+    }
+
+    @MainActor
+    func testDailyEditsRefreshReadingsOnly() async throws {
+        let spy = Spy()
+        spy.free["/Volumes/B"] = 1 * gb
+        let (vm, cleanup) = try makeVM(spy) { $0.schedule = .daily; $0.alertOnly = false }
+        defer { cleanup() }
+
+        vm.settings.enabled = true
+        await waitUntil { vm.nextCheck != nil }
+        vm.settings.paths = ["/", "/Volumes/B"]
+        await waitUntil { vm.lastReadings.map(\.path) == ["/", "/Volumes/B"] }
+        await settle()
+        XCTAssertEqual(vm.lastReadings.map(\.path), ["/", "/Volumes/B"])
+        XCTAssertTrue(spy.posts.isEmpty)
+        XCTAssertEqual(spy.notifications, 0)
         vm.settings.enabled = false
     }
 

@@ -41,6 +41,9 @@ final class DiskMonitorViewModel: ObservableObject {
     /// How long a top-folder list is reused while a disk stays low, so each
     /// check doesn't walk the whole home folder again.
     private static let topFoldersMaxAge: TimeInterval = 3600
+    /// When the daily schedule last ran (or was set up), so a run missed
+    /// while Burrow wasn't running is caught up at launch.
+    private static let lastDailyRunKey = "diskMonitorLastDailyRun"
 
     @Published var settings: DiskMonitorSettings {
         didSet {
@@ -48,12 +51,18 @@ final class DiskMonitorViewModel: ObservableObject {
             settings.save(to: defaults)
             if settings.enabled != oldValue.enabled || settings.intervalMinutes != oldValue.intervalMinutes
                 || settings.schedule != oldValue.schedule || settings.dailyMinute != oldValue.dailyMinute {
+                // A schedule set up now has nothing to catch up on yet.
+                if settings.schedule == .daily { recordDailyRun() }
                 reschedule()
-            } else if settings.enabled, settings.schedule == .interval,
+            } else if settings.enabled,
                       settings.thresholdPercent != oldValue.thresholdPercent || settings.paths != oldValue.paths {
-                // Not on a daily schedule: the user chose when checks (and
-                // Slack posts) happen, e.g. only at night.
-                recheckSoon()
+                if settings.schedule == .interval {
+                    recheckSoon()
+                } else {
+                    // Daily: the user chose when checks (and Slack posts)
+                    // happen, so only refresh what the tab shows.
+                    refreshReadingsSoon()
+                }
             }
         }
     }
@@ -84,6 +93,7 @@ final class DiskMonitorViewModel: ObservableObject {
     private var notificationPending = false
     private var topFoldersCache: (date: Date, alerting: Set<String>, top: DiskMonitorReport.TopFolders)?
     private var wakeObserver: NSObjectProtocol?
+    private var timeZoneObserver: NSObjectProtocol?
 
     init(defaults: UserDefaults = .standard, keychain: Keychain = .slack,
          dependencies: Dependencies = Dependencies(), recheckDelay: UInt64 = 1_000_000_000,
@@ -100,8 +110,9 @@ final class DiskMonitorViewModel: ObservableObject {
 
     // MARK: - Scheduling
 
-    /// Starts the timer if enabled and catches up after sleep. Called once
-    /// from `AppDelegate`; safe to call again.
+    /// Starts the timer if enabled and catches up after sleep, after a time
+    /// zone change, and on launch for a daily run missed while Burrow wasn't
+    /// running. Called once from `AppDelegate`; safe to call again.
     func start() {
         if wakeObserver == nil {
             wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
@@ -110,8 +121,38 @@ final class DiskMonitorViewModel: ObservableObject {
                 Task { @MainActor in self?.handleWake() }
             }
         }
+        if timeZoneObserver == nil {
+            timeZoneObserver = NotificationCenter.default.addObserver(
+                forName: .NSSystemTimeZoneDidChange, object: nil, queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor in self?.handleTimeZoneChange() }
+            }
+        }
         guard loop == nil else { return }
-        reschedule()
+        reschedule(checkNow: settings.schedule == .daily ? missedDailyRun() : nil)
+    }
+
+    /// The daily time is local time; after travel, recompute it.
+    func handleTimeZoneChange() {
+        guard settings.enabled, settings.schedule == .daily else { return }
+        reschedule(checkNow: false)
+    }
+
+    /// A daily run was due since the last one (or since the schedule was set
+    /// up) and didn't happen, e.g. the Mac was off at that time.
+    func missedDailyRun(now: Date? = nil) -> Bool {
+        guard settings.schedule == .daily,
+              let last = defaults.object(forKey: Self.lastDailyRunKey) as? Date
+        else { return false }
+        return last < settings.lastScheduledRun(atOrBefore: now ?? deps.now())
+    }
+
+    private func recordDailyRun() {
+        defaults.set(deps.now(), forKey: Self.lastDailyRunKey)
+    }
+
+    func setLastDailyRunForTesting(_ date: Date) {
+        defaults.set(date, forKey: Self.lastDailyRunKey)
     }
 
     /// The timer notices an overdue check within one slice; on wake, run it
@@ -143,6 +184,8 @@ final class DiskMonitorViewModel: ObservableObject {
         }
         // Only while monitoring: no Keychain access on launch when it's off.
         refreshSlackToken()
+        // Daily and not checking now: still show current numbers in the tab.
+        if !checkFirst { refreshReadingsSoon(delay: 0) }
         // Ask in parallel, never awaited by the timer: the system prompt only
         // returns once the user answers, and an ignored prompt must not stop
         // monitoring. A first alert sent before the answer isn't delivered,
@@ -166,7 +209,10 @@ final class DiskMonitorViewModel: ObservableObject {
                     guard let self else { return }
                     // Unstructured, so cancelling the loop (interval change)
                     // never cancels a Slack post that's already in flight.
-                    if runNow { Task { await self.check() } }
+                    if runNow {
+                        if self.settings.schedule == .daily { self.recordDailyRun() }
+                        Task { await self.check() }
+                    }
                     runNow = true
                     self.nextCheck = self.settings.nextRun(after: self.deps.now())
                     slice = self.timerSlice
@@ -183,6 +229,21 @@ final class DiskMonitorViewModel: ObservableObject {
                     try? await Task.sleep(nanoseconds: UInt64(min(remaining, slice) * 1_000_000_000))
                 }
             }
+        }
+    }
+
+    /// Read-only refresh of the volume readings for the tab and menu bar: no
+    /// notification, no Slack, alert state untouched. Debounced like
+    /// `recheckSoon`.
+    private func refreshReadingsSoon(delay: UInt64? = nil) {
+        pendingRecheck?.cancel()
+        let gen = generation
+        pendingRecheck = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: delay ?? self?.recheckDelay ?? 0)
+            guard !Task.isCancelled, let self, self.settings.enabled else { return }
+            let readings = await self.deps.readAll(self.settings.paths)
+            guard gen == self.generation, !self.isChecking else { return }
+            self.lastReadings = readings
         }
     }
 

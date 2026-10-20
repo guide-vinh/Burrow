@@ -259,8 +259,11 @@ enum DiskMonitorReport {
             text += "\n```\n" + rows.joined(separator: "\n") + "\n```"
         }
         if let seconds = top.stoppedAfter {
+            // The actual run time: a walk stopped early (du killed, task
+            // cancelled) shouldn't claim it ran into the time limit.
             let minutes = Int((seconds / 60).rounded())
-            text += "\n_Scan stopped after \(minutes) min; folders not measured by then are missing from this list._"
+            let stopped = minutes >= 1 ? "Scan stopped after \(minutes) min" : "Scan stopped before it finished"
+            text += "\n_\(stopped); folders not measured by then are missing from this list._"
         }
         if top.limited {
             text += "\n_Burrow doesn't have Full Disk Access, so Desktop, Documents, Downloads, Music, Photos and app data (Mail, Messages, containers…) were skipped._"
@@ -308,6 +311,7 @@ enum DiskMonitorReport {
     static func scanTopFolders(timeout: TimeInterval = 300) async -> TopFolders? {
         let fullAccess = FullDiskAccess.probe()
         let home = URL(fileURLWithPath: NSHomeDirectory()).standardizedFileURL
+        let started = Date()
         let tree = await withDeadline(timeout) {
             await DiskUsageScanner.scanTree(home, depth: 2,
                                             excluding: fullAccess ? cloudNames : protectedNames,
@@ -315,7 +319,8 @@ enum DiskMonitorReport {
         }
         guard !tree.failed else { return nil }
         return TopFolders(folders: assemble(tree.sizes, home: home.path),
-                          limited: !fullAccess, stoppedAfter: tree.complete ? nil : timeout)
+                          limited: !fullAccess,
+                          stoppedAfter: tree.complete ? nil : Date().timeIntervalSince(started))
     }
 
     /// Runs `work`, cancelling it once `timeout` passes, and returns its

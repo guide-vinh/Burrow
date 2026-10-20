@@ -73,15 +73,17 @@ struct MonitoringView: View {
         guard vm.settings.enabled else {
             return "Get notified — and optionally post to Slack — when a disk runs low."
         }
-        guard let last = vm.lastChecked else {
-            // A daily schedule waits for its time instead of checking at once.
-            if let next = vm.nextCheck {
-                return "First check at \(next.formatted(date: .omitted, time: .shortened))"
-            }
-            return "Waiting for the first check…"
-        }
         let state = vm.isAlert ? "Low disk space" : "All volumes have enough free space"
-        return "\(state) · checked \(last.formatted(.relative(presentation: .named)))"
+        // A daily schedule says when it runs next; it waits for that time
+        // instead of checking at once, while the readings stay current.
+        let next = vm.settings.schedule == .daily
+            ? vm.nextCheck.map { $0.formatted(date: .omitted, time: .shortened) } : nil
+        guard let last = vm.lastChecked else {
+            guard let next else { return "Waiting for the first check…" }
+            return vm.lastReadings.isEmpty ? "First check at \(next)" : "\(state) · first check at \(next)"
+        }
+        let checked = "\(state) · checked \(last.formatted(.relative(presentation: .named)))"
+        return next.map { "\(checked) · next at \($0)" } ?? checked
     }
 }
 

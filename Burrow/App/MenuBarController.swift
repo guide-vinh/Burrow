@@ -89,19 +89,14 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         let sub = NSMenu()
         sub.autoenablesItems = false
         let current = vm.settings.thresholdPercent
-        for preset in DiskMonitorSettings.thresholdPresets {
-            let entry = action("\(Int(preset))% free", #selector(setThreshold(_:)))
-            entry.representedObject = preset
-            entry.state = preset == current ? .on : .off
+        // A value saved by an earlier version that isn't a preset is listed
+        // too, in order, like the tab's picker.
+        let choices = Set(DiskMonitorSettings.thresholdPresets + [current]).sorted()
+        for value in choices {
+            let entry = action("\(MenuBarFormat.percent(value)) free", #selector(setThreshold(_:)))
+            entry.representedObject = value
+            entry.state = value == current ? .on : .off
             sub.addItem(entry)
-        }
-        // The tab offers the same choices, so there's no "Custom…" entry;
-        // a value saved by an earlier version is shown, ticked, as is.
-        if !DiskMonitorSettings.thresholdPresets.contains(current) {
-            let saved = disabled("\(MenuBarFormat.percent(current)) free")
-            saved.state = .on
-            sub.addItem(.separator())
-            sub.addItem(saved)
         }
         threshold.submenu = sub
         menu.addItem(threshold)
@@ -295,8 +290,10 @@ enum MenuBarFormat {
     static func usage(_ r: DiskMonitorReport.Reading, _ display: DiskMonitorSettings.PercentDisplay) -> String {
         let free = DiskMonitorReport.gb(r.free), total = DiskMonitorReport.gb(r.total)
         switch display {
-        case .used: return "\(Int(r.usedPercent.rounded()))% used, \(free) free of \(total)"
-        case .free: return "\(Int(r.freePercent.rounded()))% free, \(free) of \(total)"
+        // One decimal (like Slack's report), so 4.8% doesn't read as "5%"
+        // next to a 5% threshold.
+        case .used: return "\(DiskMonitorReport.percent(r.usedPercent))% used, \(free) free of \(total)"
+        case .free: return "\(DiskMonitorReport.percent(r.freePercent))% free, \(free) of \(total)"
         }
     }
 

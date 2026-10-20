@@ -48,9 +48,9 @@ struct DiskMonitorSettings: Codable, Equatable {
         var label: String { self == .used ? "Used" : "Free" }
     }
 
-    /// Threshold choices in the Monitoring tab and the menu bar: 5% steps
-    /// up to 50%.
-    static let thresholdPresets: [Double] = stride(from: 5, through: 50, by: 5).map(Double.init)
+    /// Threshold choices in the Monitoring tab and the menu bar: 1–4% (for
+    /// large disks, or one already under 5%), then 5% steps up to 50%.
+    static let thresholdPresets: [Double] = [1, 2, 3, 4] + stride(from: 5, through: 50, by: 5).map(Double.init)
     static let intervalPresets: [Int] = [15, 30, 60, 180, 360, 720, 1440]
 
     // MARK: - Persistence
@@ -220,6 +220,23 @@ struct DiskMonitorSettings: Codable, Equatable {
             }
             return now.addingTimeInterval(24 * 3600)
         }
+    }
+
+    /// The latest daily run time at or before `now` (today's if it has come,
+    /// else yesterday's), to tell whether a run was missed.
+    func lastScheduledRun(atOrBefore now: Date, calendar: Calendar = .current) -> Date {
+        let minute = min(max(dailyMinute, 0), 24 * 60 - 1)
+        let time = DateComponents(hour: minute / 60, minute: minute % 60)
+        func firstOccurrence(onDayStarting day: Date) -> Date? {
+            calendar.nextDate(after: day.addingTimeInterval(-1), matching: time, matchingPolicy: .nextTime)
+        }
+        let today = calendar.startOfDay(for: now)
+        if let run = firstOccurrence(onDayStarting: today), run <= now { return run }
+        if let yesterday = calendar.date(byAdding: .day, value: -1, to: today),
+           let run = firstOccurrence(onDayStarting: yesterday) {
+            return run
+        }
+        return now.addingTimeInterval(-24 * 3600)
     }
 
     /// These settings with every option back to its default, except what
