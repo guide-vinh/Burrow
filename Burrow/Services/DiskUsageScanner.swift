@@ -51,23 +51,39 @@ enum DiskUsageScanner {
     }
 
     /// Run `du -d 1 -k` on `url`: the folder's recursive total plus its
-    /// immediate subdirectories with sizes. Excluded basenames are pruned.
-    static func scan(_ url: URL) async -> FolderScan {
+    /// immediate subdirectories with sizes. Basenames in `excluding` are
+    /// pruned at any depth (Analyze's list by default; the disk monitor
+    /// passes its own). With `cancellable`, a cancelled task terminates
+    /// `du` instead of waiting for the walk. With `sameVolume`, `du -x`
+    /// stays on `url`'s volume instead of descending into mounts under it.
+    static func scan(_ url: URL, excluding: [String] = excludedNames, cancellable: Bool = false,
+                     sameVolume: Bool = false) async -> FolderScan {
         var args = ["-d", "1", "-k"]
-        for name in excludedNames { args.append(contentsOf: ["-I", name]) }
+        if sameVolume { args.append("-x") }
+        for name in excluding { args.append(contentsOf: ["-I", name]) }
         args.append(url.standardizedFileURL.path)
 
-        guard let output = await runDu(args) else {
+        guard let output = await runDu(args, cancellable: cancellable) else {
             return FolderScan(total: 0, children: [])
         }
-        return parse(output, root: url.standardizedFileURL)
+        return parse(output, root: url.standardizedFileURL, excluding: excluding)
     }
 
     // MARK: - Private
 
-    private static func runDu(_ args: [String]) async -> String? {
+    private static func runDu(_ args: [String], cancellable: Bool = false) async -> String? {
+        let process = Process()
+        guard cancellable else { return await runDu(process, args) }
+        return await withTaskCancellationHandler {
+            await runDu(process, args)
+        } onCancel: {
+            // Exits du; its terminationHandler still resumes the continuation.
+            if process.isRunning { process.terminate() }
+        }
+    }
+
+    private static func runDu(_ process: Process, _ args: [String]) async -> String? {
         await withCheckedContinuation { (cont: CheckedContinuation<String?, Never>) in
-            let process = Process()
             process.executableURL = URL(fileURLWithPath: "/usr/bin/du")
             process.arguments = args
             let pipe = Pipe()
@@ -78,8 +94,16 @@ enum DiskUsageScanner {
                 let data = pipe.fileHandleForReading.readDataToEndOfFile()
                 cont.resume(returning: String(data: data, encoding: .utf8))
             }
+            // Cancelled before launch: don't start a walk nobody will read.
+            if Task.isCancelled {
+                cont.resume(returning: nil)
+                return
+            }
             do {
                 try process.run()
+                // A cancel that landed between the check above and run()
+                // found nothing to terminate; catch it here.
+                if Task.isCancelled { process.terminate() }
             } catch {
                 logger.error("du launch failed: \(error.localizedDescription, privacy: .public)")
                 cont.resume(returning: nil)
@@ -88,7 +112,7 @@ enum DiskUsageScanner {
     }
 
     /// Parse `du -k` output ("<kbytes>\t<path>" per line) into a FolderScan.
-    static func parse(_ output: String, root: URL) -> FolderScan {
+    static func parse(_ output: String, root: URL, excluding: [String] = excludedNames) -> FolderScan {
         let rootPath = root.path
         var total: Int64 = 0
         var children: [DiskEntry] = []
@@ -104,7 +128,7 @@ enum DiskUsageScanner {
                 continue
             }
             let url = URL(fileURLWithPath: path).standardizedFileURL
-            if excludedNames.contains(url.lastPathComponent) { continue }
+            if excluding.contains(url.lastPathComponent) { continue }
             children.append(DiskEntry(
                 id: UUID(),
                 url: url,

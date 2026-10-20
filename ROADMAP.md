@@ -72,6 +72,19 @@ score combining CPU load, memory pressure, disk usage, and uptime
 Acceptance: tiles update at 1 Hz without measurable CPU cost. Menu bar
 icon respects light/dark mode.
 
+### Phase 4a — Disk Monitor (prototype)
+
+Monitoring tab, off by default, every value user-filled. Checks the
+chosen volumes on a timer (15 min – 6 h), raises a macOS notification
+when free space is at or below the threshold, and optionally posts a
+report to Slack (bot token in Keychain, channel, user/group tags,
+largest home folders on alerts). Ported from diskmon. "Open at login"
+(macOS 13+) keeps it running across restarts.
+
+- [x] `DiskMonitorViewModel` scheduler + `DiskMonitorReport` + `SlackClient`
+- [x] Monitoring tab with live volume readings and configuration
+- [x] Menu bar status item showing the fullest disk, threshold presets, Check Now
+
 ## Phase 5 — Polish
 
 Localization (vi-VN, zh-CN, en-US, ja-JP). Sparkle 2 auto-update.

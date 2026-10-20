@@ -5,6 +5,7 @@ import SwiftUI
 struct BurrowApp: App {
     @StateObject private var updater = UpdaterController()
     @StateObject private var catalogUpdates = CatalogUpdateViewModel()
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     private static let githubURL = URL(string: "https://github.com/guide-vinh/Burrow")!
 
@@ -12,6 +13,7 @@ struct BurrowApp: App {
         WindowGroup {
             RootView()
                 .environmentObject(updater)
+                .environmentObject(appDelegate.diskMonitor)
                 // Best-effort catalog refresh on launch (throttled to 24h);
                 // never blocks the UI or the catalog load.
                 .task { await catalogUpdates.checkOnLaunchIfDue() }

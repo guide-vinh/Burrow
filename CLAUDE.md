@@ -24,12 +24,14 @@ Xcode project: `Burrow.xcodeproj` (no SPM manifest; dependencies vendored under 
 
 ```
 Burrow/
-  App/         BurrowApp.swift (entry), RootView.swift (3-tab shell)
+  App/         BurrowApp.swift (entry), AppDelegate (starts the disk monitor), RootView.swift (sidebar shell),
+               MenuBarController (disk monitor status item)
   Core/        PathResolver (~ + glob expansion), SafeFileOps (the ONLY file mutator)
   Models/      Codable structs & value types (see "Key models")
   Services/    Scanners + engines (see "Services")
-  ViewModels/  AnalyzeViewModel, CleanViewModel, UninstallViewModel (MVVM, @MainActor)
-  Views/       Analyze/, Clean/, Uninstall/, Onboarding/, Settings/, Shared/
+  ViewModels/  AnalyzeViewModel, CleanViewModel, UninstallViewModel, LicenseViewModel,
+               CatalogUpdateViewModel, DiskMonitorViewModel (MVVM, @MainActor)
+  Views/       Analyze/, Clean/, Uninstall/, Licenses/, Monitoring/, Onboarding/, Settings/, Shared/, Status/
   Resources/   CleanRules.json (clean catalog), AppLeftovers.json (uninstall catalog), Assets
   Algorithms/  TreemapLayout (squarified treemap for Analyze)
 BurrowTests/   Mirror of Services/Models/ViewModels (XCTest)
@@ -43,6 +45,7 @@ scripts/       release.sh, appcast.xml, ExportOptions.plist, icon generator
 | Analyze | `AnalyzeViewModel` | `DiskScanner`, `DiskCache`, `TreemapLayout` | — |
 | Clean | `CleanViewModel` | `RuleEngine` + specialized scanners | `CleanRules.json` |
 | Uninstall | `UninstallViewModel` | `AppScanner` | `AppLeftovers.json` |
+| Monitoring | `DiskMonitorViewModel` | `DiskMonitorReport`, `SlackClient`, `DiskMonitorNotifier` | — |
 
 ## Clean pipeline (most relevant for adding cache categories)
 

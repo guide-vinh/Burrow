@@ -1,12 +1,13 @@
 import AppKit
 import SwiftUI
 
-/// Sidebar shell. Holds the four primary destinations (Clean, Uninstall,
-/// Analyze, Status) plus a Settings row at the bottom. Detail area
-/// switches manually based on `selection`. We avoid `NavigationView` —
-/// its underlying NSSplitViewController re-runs its column-sizing pass
-/// when the detail identity changes, which makes the sidebar flicker
-/// briefly between tab switches before the `.frame` constraint applies.
+/// Sidebar shell. Holds the primary destinations (Clean, Uninstall,
+/// Analyze, Licenses, Monitoring, Status) plus a Settings row at the
+/// bottom. Detail area switches manually based on `selection`. We avoid
+/// `NavigationView` — its underlying NSSplitViewController re-runs its
+/// column-sizing pass when the detail identity changes, which makes the
+/// sidebar flicker briefly between tab switches before the `.frame`
+/// constraint applies.
 struct RootView: View {
 
     @State private var selection: SidebarDestination = .clean
@@ -19,6 +20,9 @@ struct RootView: View {
     @StateObject private var uninstallVM = UninstallViewModel()
     @StateObject private var analyzeVM = AnalyzeViewModel()
     @StateObject private var licenseVM = LicenseViewModel()
+    // Owned by BurrowApp: the monitor keeps running when no window is open.
+    @EnvironmentObject private var diskMonitor: DiskMonitorViewModel
+    @StateObject private var hostWindow = HostWindow()
 
     var body: some View {
         HStack(spacing: 0) {
@@ -33,6 +37,20 @@ struct RootView: View {
         .task { await refreshFDAState() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             Task { await refreshFDAState() }
+        }
+        .background(MainWindowMarker(host: hostWindow))
+        // The menu bar's "Open Monitoring…" / "Custom…" land on this tab —
+        // only in the window it brought forward.
+        .onReceive(NotificationCenter.default.publisher(for: MonitoringNavigation.notification)) { note in
+            if let target = note.object as? NSWindow, target === hostWindow.window {
+                selection = .monitoring
+            }
+        }
+        .onAppear {
+            if MonitoringNavigation.pending {
+                MonitoringNavigation.pending = false
+                selection = .monitoring
+            }
         }
         .sheet(isPresented: $showFDASheet) {
             FullDiskAccessSheet(isPresented: $showFDASheet)
@@ -103,10 +121,7 @@ struct RootView: View {
         .padding(.bottom, Spacing.md)
     }
 
-    /// `CFBundleShortVersionString` from Info.plist; falls back to "—".
-    private var appVersion: String {
-        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—"
-    }
+    private var appVersion: String { Bundle.main.shortVersion }
 
     /// User-facing app name. `CFBundleDisplayName` carries the per-configuration
     /// name ("Burrow Dev" for Debug builds) so this shows the dev suffix
@@ -139,6 +154,7 @@ struct RootView: View {
         case .analyze:   AnalyzeView(vm: analyzeVM)
         case .licenses:  LicenseView(vm: licenseVM)
         case .status:    placeholder(for: .status)
+        case .monitoring: MonitoringView(vm: diskMonitor)
         }
     }
 
@@ -156,6 +172,7 @@ struct RootView: View {
 
 #Preview("Root — full app") {
     RootView()
+        .environmentObject(DiskMonitorViewModel())
         .frame(width: 1200, height: 720)
 }
 
@@ -165,6 +182,7 @@ enum SidebarDestination: String, CaseIterable, Hashable {
     case uninstall
     case analyze
     case licenses
+    case monitoring
     case status
 
     var title: String {
@@ -174,6 +192,7 @@ enum SidebarDestination: String, CaseIterable, Hashable {
         case .analyze:   return "Analyze"
         case .licenses:  return "Licenses"
         case .status:    return "Status"
+        case .monitoring: return "Monitoring"
         }
     }
 
@@ -184,6 +203,7 @@ enum SidebarDestination: String, CaseIterable, Hashable {
         case .analyze:   return Iconography.sfSymbol(for: "chart-pie")
         case .licenses:  return Iconography.sfSymbol(for: "badge-check")
         case .status:    return Iconography.sfSymbol(for: "activity")
+        case .monitoring: return Iconography.sfSymbol(for: "hard-drive")
         }
     }
 }

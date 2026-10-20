@@ -103,9 +103,7 @@ enum IssueReporter {
         """
     }
 
-    private static var appVersion: String {
-        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—"
-    }
+    private static var appVersion: String { Bundle.main.shortVersion }
 
     private static var buildNumber: String {
         Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "—"
