@@ -37,11 +37,7 @@ final class DiskMonitorNotifier: NSObject, UNUserNotificationCenterDelegate {
         content.title = "Low disk space"
         content.body = readings
             .filter { $0.isLow(threshold: threshold) }
-            .map { r in
-                r.failed
-                    ? "\(r.path): couldn't be read"
-                    : "\(r.path): \(DiskMonitorReport.gb(r.free)) free (\(DiskMonitorReport.percent(r.freePercent))%)"
-            }
+            .map { r in "\(r.path): \(DiskMonitorReport.gb(r.free)) free (\(DiskMonitorReport.percent(r.freePercent))%)" }
             .joined(separator: "\n")
         content.sound = .default
         let request = UNNotificationRequest(identifier: "fun.burrow.diskmonitor.low", content: content, trigger: nil)

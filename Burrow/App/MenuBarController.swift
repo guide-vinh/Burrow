@@ -39,14 +39,18 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         statusItem = item
         DockPresence.menuBarItemShown = true
 
-        let look = MenuBarFormat.look(vm.lastReadings, threshold: vm.settings.thresholdPercent,
+        let look = MenuBarFormat.look(vm.visibleReadings, threshold: vm.settings.thresholdPercent,
                                       display: vm.settings.percentDisplay)
         if let button = item.button {
             let image = NSImage(systemSymbolName: look.symbol, accessibilityDescription: "Disk Monitor")
             image?.isTemplate = true
             button.image = image
             button.imagePosition = .imageLeading
-            button.title = look.title.isEmpty ? "" : " \(look.title)"
+            // Monospaced digits, so the item doesn't change width with every reading.
+            button.attributedTitle = NSAttributedString(
+                string: look.title.isEmpty ? "" : " \(look.title)",
+                attributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)]
+            )
             button.toolTip = "Burrow Disk Monitor"
         }
     }
@@ -76,10 +80,10 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         menu.addItem(disabled("Burrow Disk Monitor"))
         menu.addItem(.separator())
 
-        if vm.lastReadings.isEmpty {
+        if vm.visibleReadings.isEmpty {
             menu.addItem(disabled("Not checked yet"))
         }
-        for reading in vm.lastReadings {
+        for reading in vm.visibleReadings {
             menu.addItem(disabled(MenuBarFormat.line(for: reading, display: vm.settings.percentDisplay)))
         }
         menu.addItem(disabled(MenuBarFormat.schedule(last: vm.lastChecked, next: vm.nextCheck)))
@@ -89,21 +93,15 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         let sub = NSMenu()
         sub.autoenablesItems = false
         let current = vm.settings.thresholdPercent
-        for preset in DiskMonitorSettings.thresholdPresets {
-            let entry = action("\(Int(preset))% free", #selector(setThreshold(_:)))
-            entry.representedObject = preset
-            entry.state = preset == current ? .on : .off
+        // A value saved by an earlier version that isn't a preset is listed
+        // too, in order, like the tab's picker.
+        let choices = Set(DiskMonitorSettings.thresholdPresets + [current]).sorted()
+        for value in choices {
+            let entry = action("\(MenuBarFormat.percent(value)) free", #selector(setThreshold(_:)))
+            entry.representedObject = value
+            entry.state = value == current ? .on : .off
             sub.addItem(entry)
         }
-        sub.addItem(.separator())
-        let custom = action(
-            DiskMonitorSettings.thresholdPresets.contains(current)
-                ? "Custom…"
-                : "Custom (\(MenuBarFormat.percent(current)))…",
-            #selector(openMonitoring)
-        )
-        custom.state = DiskMonitorSettings.thresholdPresets.contains(current) ? .off : .on
-        sub.addItem(custom)
         threshold.submenu = sub
         menu.addItem(threshold)
 
@@ -119,7 +117,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         display.submenu = displaySub
         menu.addItem(display)
 
-        let alertOnly = action("Only Post When Low", #selector(toggleAlertOnly))
+        let alertOnly = action("Only Post Alerts", #selector(toggleAlertOnly))
         alertOnly.state = vm.settings.alertOnly ? .on : .off
         alertOnly.isEnabled = vm.isSlackConfigured
         menu.addItem(alertOnly)
@@ -264,29 +262,26 @@ struct MainWindowMarker: NSViewRepresentable {
 /// Pure text/icon choices for the status item, kept apart for tests.
 enum MenuBarFormat {
 
-    /// Icon + title: the fullest disk's used % ("74%") or free % ("26%"),
-    /// a warning when any disk is at or below the threshold, "!" when one
-    /// couldn't be read.
+    /// Icon + title: the fullest readable disk's used % ("74.0%") or free %
+    /// ("26.0%"), with one decimal like the menu lines, a warning only when a disk is at or below the threshold, and
+    /// "?" when one couldn't be read (not a warning: e.g. an unplugged drive).
     static func look(
         _ readings: [DiskMonitorReport.Reading],
         threshold: Double,
         display: DiskMonitorSettings.PercentDisplay = .used
     ) -> (symbol: String, title: String) {
-        if readings.contains(where: \.failed) {
-            return ("exclamationmark.triangle", "!")
-        }
-        guard let fullest = readings.max(by: { $0.usedPercent < $1.usedPercent }) else {
-            return ("internaldrive", "")
+        let readable = readings.filter { !$0.failed }
+        let unreadable = readable.count < readings.count
+        guard let fullest = readable.max(by: { $0.usedPercent < $1.usedPercent }) else {
+            return ("internaldrive", unreadable ? "?" : "")
         }
         let symbol = DiskMonitorReport.isAlert(readings, threshold: threshold) ? "exclamationmark.triangle" : "internaldrive"
-        switch display {
-        case .used: return (symbol, "\(Int(fullest.usedPercent.rounded()))%")
-        case .free: return (symbol, "\(Int(fullest.freePercent.rounded()))%")
-        }
+        let percent = display == .used ? fullest.usedPercent : fullest.freePercent
+        return (symbol, "\(DiskMonitorReport.percent(percent))%" + (unreadable ? " ?" : ""))
     }
 
-    /// "/  —  74% used, 130.7 GB free of 494.4 GB" (as in diskmon's menu),
-    /// or "/  —  26% free, 130.7 GB of 494.4 GB".
+    /// "/  —  73.6% used, 130.7 GB free of 494.4 GB" (as in diskmon's menu),
+    /// or "/  —  26.4% free, 130.7 GB of 494.4 GB".
     static func line(for r: DiskMonitorReport.Reading, display: DiskMonitorSettings.PercentDisplay = .used) -> String {
         if r.failed { return "\(r.path)  —  couldn't be read" }
         return "\(r.path)  —  \(usage(r, display))"
@@ -296,14 +291,17 @@ enum MenuBarFormat {
     static func usage(_ r: DiskMonitorReport.Reading, _ display: DiskMonitorSettings.PercentDisplay) -> String {
         let free = DiskMonitorReport.gb(r.free), total = DiskMonitorReport.gb(r.total)
         switch display {
-        case .used: return "\(Int(r.usedPercent.rounded()))% used, \(free) free of \(total)"
-        case .free: return "\(Int(r.freePercent.rounded()))% free, \(free) of \(total)"
+        // One decimal (like Slack's report), so 4.8% doesn't read as "5%"
+        // next to a 5% threshold.
+        case .used: return "\(DiskMonitorReport.percent(r.usedPercent))% used, \(free) free of \(total)"
+        case .free: return "\(DiskMonitorReport.percent(r.freePercent))% free, \(free) of \(total)"
         }
     }
 
     private static let time: DateFormatter = {
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = .autoupdatingCurrent
         f.dateFormat = "HH:mm"
         return f
     }()

@@ -16,9 +16,9 @@ struct MonitoringView: View {
             // without scrolling: status + general settings | Slack.
             HStack(alignment: .top, spacing: Spacing.lg) {
                 Form {
-                    if vm.settings.enabled && !vm.lastReadings.isEmpty {
+                    if vm.settings.enabled && !vm.visibleReadings.isEmpty {
                         Section("Volumes") {
-                            ForEach(Array(vm.lastReadings.enumerated()), id: \.offset) { _, reading in
+                            ForEach(Array(vm.visibleReadings.enumerated()), id: \.offset) { _, reading in
                                 VolumeRow(reading: reading, threshold: vm.settings.thresholdPercent,
                                       display: vm.settings.percentDisplay)
                             }
@@ -73,9 +73,19 @@ struct MonitoringView: View {
         guard vm.settings.enabled else {
             return "Get notified — and optionally post to Slack — when a disk runs low."
         }
-        guard let last = vm.lastChecked else { return "Waiting for the first check…" }
-        let state = vm.isAlert ? "Low disk space" : "All volumes have enough free space"
-        return "\(state) · checked \(last.formatted(.relative(presentation: .named)))"
+        let state = vm.isAlert ? "Low disk space"
+            : vm.unreadablePaths.isEmpty ? "All volumes have enough free space"
+            : vm.unreadablePaths.count == 1 ? "A path couldn't be read" : "Some paths couldn't be read"
+        // A daily schedule says when it runs next; it waits for that time
+        // instead of checking at once, while the readings stay current.
+        let next = vm.settings.schedule == .daily
+            ? vm.nextCheck.map { $0.formatted(date: .omitted, time: .shortened) } : nil
+        guard let last = vm.lastChecked else {
+            guard let next else { return "Waiting for the first check…" }
+            return vm.visibleReadings.isEmpty ? "First check at \(next)" : "\(state) · first check at \(next)"
+        }
+        let checked = "\(state) · checked \(last.formatted(.relative(presentation: .named)))"
+        return next.map { "\(checked) · next at \($0)" } ?? checked
     }
 }
 
@@ -90,7 +100,10 @@ private struct VolumeRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.xs) {
             HStack {
-                Text(reading.path).font(.bodySMed).foregroundStyle(Color.fgPrimary)
+                // Amber when unreadable: worth a look,
+                // but red stays for low space.
+                Text(reading.path).font(.bodySMed)
+                    .foregroundStyle(reading.failed ? Color.Risk.medFG : Color.fgPrimary)
                 Spacer()
                 Text(detail)
                     .font(.captionM)
@@ -98,9 +111,25 @@ private struct VolumeRow: View {
                     .monospacedDigit()
             }
             if !reading.failed {
-                ProgressView(value: min(max(display == .used ? reading.usedPercent : reading.freePercent, 0), 100),
-                             total: 100)
-                    .tint(isLow ? Color.destructive : Color.accentPrimary)
+                // Drawn like Analyze's capacity bar (CapacitySummaryCard), and
+                // like it always fills the used share: Used/Free only changes
+                // the label. A native ProgressView ignores tint on macOS 12.
+                GeometryReader { geometry in
+                    ZStack(alignment: .leading) {
+                        Capsule()
+                            .fill(Color.surfaceTertiary)
+                        Capsule()
+                            .fill(isLow ? Color.destructive : Color.accentPrimary)
+                            .frame(width: max(0, geometry.size.width * fraction))
+                    }
+                }
+                .frame(height: 8)
+                // Drawn by hand: VoiceOver gets a real progress indicator.
+                .accessibilityRepresentation {
+                    ProgressView(value: fraction)
+                        .accessibilityLabel("Space used")
+                        .accessibilityValue("\(DiskMonitorReport.percent(reading.usedPercent)) percent")
+                }
             }
         }
         .padding(.vertical, Spacing.xs)
@@ -108,6 +137,11 @@ private struct VolumeRow: View {
 
     private var detail: String {
         reading.failed ? "Couldn't be read" : MenuBarFormat.usage(reading, display)
+    }
+
+    /// Share of the bar to fill: always the space used.
+    private var fraction: Double {
+        min(max(reading.usedPercent, 0), 100) / 100
     }
 }
 

@@ -61,19 +61,26 @@ final class DiskMonitorTests: XCTestCase {
         let roomy = Reading(path: "/", total: 100 * gb, free: 60 * gb, failed: false)
         let fuller = Reading(path: "/Volumes/B", total: 100 * gb, free: 26 * gb, failed: false)
         XCTAssertEqual(MenuBarFormat.look([roomy, fuller], threshold: 10).symbol, "internaldrive")
-        XCTAssertEqual(MenuBarFormat.look([roomy, fuller], threshold: 10).title, "74%")
+        XCTAssertEqual(MenuBarFormat.look([roomy, fuller], threshold: 10).title, "74.0%")
         XCTAssertEqual(MenuBarFormat.look([roomy, fuller], threshold: 30).symbol, "exclamationmark.triangle")
-        XCTAssertEqual(MenuBarFormat.look([roomy, .unreadable("/X")], threshold: 10).title, "!")
+        // Unreadable isn't a warning: the readable figure plus "?".
+        XCTAssertEqual(MenuBarFormat.look([roomy, .unreadable("/X")], threshold: 10).title, "40.0% ?")
+        XCTAssertEqual(MenuBarFormat.look([roomy, .unreadable("/X")], threshold: 10).symbol, "internaldrive")
+        XCTAssertEqual(MenuBarFormat.look([.unreadable("/X")], threshold: 10).title, "?")
+        XCTAssertEqual(MenuBarFormat.look([fuller, .unreadable("/X")], threshold: 30).symbol, "exclamationmark.triangle")
         XCTAssertEqual(MenuBarFormat.look([], threshold: 10).title, "")
-        XCTAssertEqual(MenuBarFormat.look([roomy, fuller], threshold: 10, display: .free).title, "26%")
-        XCTAssertEqual(MenuBarFormat.look([roomy, .unreadable("/X")], threshold: 10, display: .free).title, "!")
+        XCTAssertEqual(MenuBarFormat.look([roomy, fuller], threshold: 10, display: .free).title, "26.0%")
+        XCTAssertEqual(MenuBarFormat.look([roomy, .unreadable("/X")], threshold: 10, display: .free).title, "60.0% ?")
     }
 
     func testMenuBarLines() {
         let r = Reading(path: "/", total: 494_400_000_000, free: 130_700_000_000, failed: false)
-        XCTAssertEqual(MenuBarFormat.line(for: r), "/  —  74% used, 130.7 GB free of 494.4 GB")
+        XCTAssertEqual(MenuBarFormat.line(for: r), "/  —  73.6% used, 130.7 GB free of 494.4 GB")
         XCTAssertEqual(MenuBarFormat.line(for: .unreadable("/X")), "/X  —  couldn't be read")
-        XCTAssertEqual(MenuBarFormat.line(for: r, display: .free), "/  —  26% free, 130.7 GB of 494.4 GB")
+        XCTAssertEqual(MenuBarFormat.line(for: r, display: .free), "/  —  26.4% free, 130.7 GB of 494.4 GB")
+        // Not rounded up to a 5% threshold.
+        let tight = Reading(path: "/", total: 1000 * gb, free: 48 * gb, failed: false)
+        XCTAssertEqual(MenuBarFormat.usage(tight, .free), "4.8% free, 48.0 GB of 1000.0 GB")
         XCTAssertEqual(MenuBarFormat.schedule(last: nil, next: nil), "Not checked yet")
         let cal = Calendar.current
         let last = cal.date(from: DateComponents(year: 2026, month: 10, day: 19, hour: 18, minute: 5))!
@@ -83,17 +90,22 @@ final class DiskMonitorTests: XCTestCase {
 
     // MARK: - Validation
 
-    func testParseThreshold() throws {
-        XCTAssertEqual(try DiskMonitorSettings.parseThreshold("7.5"), 7.5)
-        XCTAssertEqual(try DiskMonitorSettings.parseThreshold("7,5"), 7.5)
-        XCTAssertEqual(try DiskMonitorSettings.parseThreshold(" 12 % "), 12)
-        XCTAssertEqual(try DiskMonitorSettings.parseThreshold("0"), 0)
-        XCTAssertEqual(try DiskMonitorSettings.parseThreshold("100"), 100)
-        XCTAssertThrowsError(try DiskMonitorSettings.parseThreshold("101"))
-        XCTAssertThrowsError(try DiskMonitorSettings.parseThreshold("-1"))
-        XCTAssertThrowsError(try DiskMonitorSettings.parseThreshold("abc"))
-        XCTAssertThrowsError(try DiskMonitorSettings.parseThreshold("nan"))
-        XCTAssertThrowsError(try DiskMonitorSettings.parseThreshold("inf"))
+    func testThresholdPresetsGoFromOneToFifty() {
+        XCTAssertEqual(DiskMonitorSettings.thresholdPresets, [1, 2, 3, 4, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50])
+    }
+
+    func testLastScheduledRun() throws {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = try XCTUnwrap(TimeZone(identifier: "Asia/Ho_Chi_Minh"))
+        func at(_ day: Int, _ hour: Int, _ minute: Int) -> Date {
+            cal.date(from: DateComponents(year: 2026, month: 10, day: day, hour: hour, minute: minute))!
+        }
+        var s = DiskMonitorSettings()
+        s.schedule = .daily
+        s.dailyMinute = 5 * 60
+        XCTAssertEqual(s.lastScheduledRun(atOrBefore: at(20, 9, 0), calendar: cal), at(20, 5, 0), "today's has come")
+        XCTAssertEqual(s.lastScheduledRun(atOrBefore: at(20, 4, 0), calendar: cal), at(19, 5, 0), "not yet: yesterday's")
+        XCTAssertEqual(s.lastScheduledRun(atOrBefore: at(20, 5, 0), calendar: cal), at(20, 5, 0))
     }
 
     func testParseChannel() throws {
@@ -176,6 +188,85 @@ final class DiskMonitorTests: XCTestCase {
         XCTAssertThrowsError(try DiskMonitorSettings.parseMentions("U1"))
     }
 
+    func testIntervalPresetsGoUpToADay() {
+        XCTAssertEqual(DiskMonitorSettings.intervalPresets, [15, 30, 60, 180, 360, 720, 1440])
+        XCTAssertEqual(DiskMonitorSettings.intervalPresets, DiskMonitorSettings.intervalPresets.sorted())
+    }
+
+    func testNextRunForIntervalAndDailySchedules() throws {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = try XCTUnwrap(TimeZone(identifier: "Asia/Ho_Chi_Minh"))
+        func at(_ day: Int, _ hour: Int, _ minute: Int) -> Date {
+            cal.date(from: DateComponents(year: 2026, month: 10, day: day, hour: hour, minute: minute))!
+        }
+        var s = DiskMonitorSettings()
+        s.intervalMinutes = 60
+        XCTAssertEqual(s.nextRun(after: at(20, 10, 0), calendar: cal), at(20, 11, 0))
+
+        s.schedule = .daily
+        s.dailyMinute = 2 * 60   // 02:00
+        XCTAssertEqual(s.nextRun(after: at(20, 1, 30), calendar: cal), at(20, 2, 0), "later today")
+        XCTAssertEqual(s.nextRun(after: at(20, 10, 0), calendar: cal), at(21, 2, 0), "already passed: tomorrow")
+        XCTAssertEqual(s.nextRun(after: at(20, 2, 0), calendar: cal), at(21, 2, 0), "exactly now: next day")
+        s.dailyMinute = 23 * 60 + 59
+        XCTAssertEqual(s.nextRun(after: at(20, 23, 0), calendar: cal), at(20, 23, 59))
+    }
+
+    func testDailyRunIsOncePerDayAcrossDST() throws {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = try XCTUnwrap(TimeZone(identifier: "America/New_York"))
+        var s = DiskMonitorSettings()
+        s.schedule = .daily
+
+        // Fall back, 2026-11-01: 01:30 happens twice. After the first run,
+        // the next one is the following day, not an hour later.
+        s.dailyMinute = 90
+        let firstRun = try XCTUnwrap(s.nextRun(after: cal.date(from: DateComponents(year: 2026, month: 11, day: 1, hour: 0))!, calendar: cal))
+        let next = s.nextRun(after: firstRun.addingTimeInterval(1), calendar: cal)
+        XCTAssertEqual(cal.component(.day, from: next), 2)
+        XCTAssertGreaterThan(next.timeIntervalSince(firstRun), 23 * 3600)
+
+        // Spring forward, 2026-03-08: 02:30 doesn't exist → runs at 03:00.
+        s.dailyMinute = 150
+        let spring = s.nextRun(after: cal.date(from: DateComponents(year: 2026, month: 3, day: 8, hour: 0))!, calendar: cal)
+        XCTAssertEqual(cal.dateComponents([.day, .hour, .minute], from: spring), DateComponents(day: 8, hour: 3, minute: 0))
+    }
+
+    func testResetKeepsMonitoringAndSlack() {
+        var s = DiskMonitorSettings()
+        s.enabled = true
+        s.slackChannel = "C0123ABCD"
+        s.slackChannelLink = "https://guide.slack.com/archives/C0123ABCD"
+        s.slackMentions = ["U01"]
+        s.thresholdPercent = 40
+        s.schedule = .daily
+        s.dailyMinute = 17 * 60
+        s.intervalMinutes = 720
+        s.paths = ["/", "/Volumes/B"]
+        s.machineName = "Build Mac"
+        s.percentDisplay = .free
+        s.showInMenuBar = false
+        s.alertOnly = false
+        s.includeTopFolders = false
+
+        let r = s.resetToDefaults()
+        var expected = DiskMonitorSettings()
+        expected.enabled = true
+        expected.slackChannel = "C0123ABCD"
+        expected.slackChannelLink = "https://guide.slack.com/archives/C0123ABCD"
+        expected.slackMentions = ["U01"]
+        expected.alertOnly = false            // Slack section: kept
+        expected.includeTopFolders = false
+        XCTAssertEqual(r, expected)
+    }
+
+    func testScheduleDecodesWithDefaults() throws {
+        let older = #"{"enabled":true,"intervalMinutes":60}"#
+        let s = try JSONDecoder().decode(DiskMonitorSettings.self, from: Data(older.utf8))
+        XCTAssertEqual(s.schedule, .interval)
+        XCTAssertEqual(s.dailyMinute, 5 * 60)   // 05:00
+    }
+
     func testParsePathsDedupesAndFallsBack() {
         XCTAssertEqual(DiskMonitorSettings.parsePaths(" /, /Volumes/Data ,/, "), ["/", "/Volumes/Data"])
         XCTAssertEqual(DiskMonitorSettings.parsePaths(" , "), ["/"])
@@ -185,12 +276,15 @@ final class DiskMonitorTests: XCTestCase {
 
     private let gb = Int64(1_000_000_000)
 
-    func testAlertAtOrBelowThresholdOrOnFailure() {
+    func testAlertAtOrBelowThresholdNotOnFailure() {
         let ok = Reading(path: "/", total: 100 * gb, free: 50 * gb, failed: false)
         let atThreshold = Reading(path: "/", total: 100 * gb, free: 10 * gb, failed: false)
         XCTAssertFalse(DiskMonitorReport.isAlert([ok], threshold: 10))
         XCTAssertTrue(DiskMonitorReport.isAlert([atThreshold], threshold: 10))
-        XCTAssertTrue(DiskMonitorReport.isAlert([ok, .unreadable("/Volumes/X")], threshold: 10))
+        // An unplugged drive is "couldn't be read", not low on space.
+        XCTAssertFalse(DiskMonitorReport.isAlert([ok, .unreadable("/Volumes/X")], threshold: 10))
+        XCTAssertFalse(Reading.unreadable("/Volumes/X").isLow(threshold: 10))
+        XCTAssertTrue(DiskMonitorReport.isAlert([atThreshold, .unreadable("/Volumes/X")], threshold: 10))
         XCTAssertFalse(DiskMonitorReport.isAlert([], threshold: 10))
     }
 
@@ -206,7 +300,7 @@ final class DiskMonitorTests: XCTestCase {
         let attachment = try XCTUnwrap(msg.attachments.first)
         XCTAssertEqual(attachment.color, DiskMonitorReport.alertColor)
         XCTAssertEqual(attachment.blocks.count, 3)
-        XCTAssertTrue(attachment.blocks[0].mrkdwn.contains("*20.0 GB* of 500.0 GB (4% free, threshold 7.5%, *below threshold*)"))
+        XCTAssertTrue(attachment.blocks[0].mrkdwn.contains("*20.0 GB* of 500.0 GB (4.0% free, threshold 7.5%, *below threshold*)"))
         XCTAssertTrue(attachment.blocks[1].mrkdwn.contains("40.0 GB  ~/Library"))
         XCTAssertFalse(attachment.blocks.contains { $0.mrkdwn.contains("<@U01>") })
     }
@@ -241,8 +335,10 @@ final class DiskMonitorTests: XCTestCase {
 
     func testPercentFormatIsLocaleFree() {
         XCTAssertEqual(DiskMonitorReport.percent(7.5), "7.5")
-        XCTAssertEqual(DiskMonitorReport.percent(10), "10")
+        XCTAssertEqual(DiskMonitorReport.percent(10), "10.0")
         XCTAssertEqual(DiskMonitorReport.percent(26.44), "26.4")
+        // Always one decimal: no "96" next to "95.9".
+        XCTAssertEqual(DiskMonitorReport.percent(95.96), "96.0")
     }
 
     func testUnreadableAndEscapedText() throws {
@@ -251,14 +347,24 @@ final class DiskMonitorTests: XCTestCase {
         let text = try XCTUnwrap(msg.attachments.first?.blocks.first?.mrkdwn)
         XCTAssertTrue(text.contains("Host: *&lt;!channel&gt; &amp; co*"))
         XCTAssertTrue(text.contains("`/Volumes/&lt;X&gt;`: *not measured*"))
-        XCTAssertEqual(msg.text, ":warning: Low disk space - &lt;!channel&gt; &amp; co")
+        // A warning, not the OK colour, though nothing is low.
+        XCTAssertEqual(msg.text, ":grey_question: Path couldn't be read - &lt;!channel&gt; &amp; co")
+        XCTAssertEqual(msg.attachments.first?.color, DiskMonitorReport.warnColor)
+        XCTAssertTrue(text.contains("couldn't be read - check that it's mounted"))
+
+        // Low wins over unreadable.
+        let low = Reading(path: "/", total: 100 * gb, free: 1 * gb, failed: false)
+        let both = DiskMonitorReport.message(host: "M", readings: [low, .unreadable("/Volumes/X")],
+                                             threshold: 10, topFolders: nil, mentions: [])
+        XCTAssertEqual(both.attachments.first?.color, DiskMonitorReport.alertColor)
+        XCTAssertTrue(both.text.hasPrefix(":warning: Low disk space"))
     }
 
-    func testTopSectionWhenScanTimedOutOrEmpty() throws {
+    func testTopSectionWhenScanCouldNotRunOrIsEmpty() throws {
         let low = Reading(path: "/", total: 100 * gb, free: 1 * gb, failed: false)
         let timedOut = DiskMonitorReport.message(host: "M", readings: [low], threshold: 10,
                                                  topFolders: nil, includeTopSection: true, mentions: [])
-        XCTAssertTrue(try XCTUnwrap(timedOut.attachments.first).blocks[1].mrkdwn.contains("didn't finish"))
+        XCTAssertTrue(try XCTUnwrap(timedOut.attachments.first).blocks[1].mrkdwn.contains("couldn't be measured"))
         XCTAssertEqual(DiskMonitorReport.formatTop(.init(folders: [])), "*Top space consumers*\nNothing measurable found.")
     }
 
@@ -338,27 +444,158 @@ final class DiskMonitorTests: XCTestCase {
         XCTAssertLessThan(Date().timeIntervalSince(again), 1)
     }
 
-    func testWithTimeoutCancelsSlowWork() async {
+    func testWithDeadlineKeepsWhatWasDoneWhenTimeRunsOut() async {
         let start = Date()
-        let result: Int? = await DiskMonitorReport.withTimeout(0.1) {
+        // Work that, when cancelled, still returns what it has (like a
+        // terminated du returning the folders it finished).
+        let result = await DiskMonitorReport.withDeadline(0.1) { () -> String in
             while !Task.isCancelled { try? await Task.sleep(nanoseconds: 10_000_000) }
-            return 1
+            return "partial"
         }
-        XCTAssertNil(result)
+        XCTAssertEqual(result, "partial")
         XCTAssertLessThan(Date().timeIntervalSince(start), 2)
-        let fast: Int? = await DiskMonitorReport.withTimeout(5) { 7 }
-        XCTAssertEqual(fast, 7)
+        let fast = await DiskMonitorReport.withDeadline(5) { "done" }
+        XCTAssertEqual(fast, "done")
     }
 
-    func testCancellableDuIsTerminated() async {
-        // /System/Library takes many seconds to walk and needs no privacy
-        // permission; a cancelled cancellable scan must return right away.
+    private func makeTree(_ layout: [String: Int]) throws -> URL {
+        let root = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("burrow-tree-\(UUID().uuidString)")
+        for (relative, bytes) in layout {
+            let file = root.appendingPathComponent(relative)
+            try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try Data(count: bytes).write(to: file)
+        }
+        return root.standardizedFileURL
+    }
+
+    func testScanTreeMeasuresTwoLevelsInOneWalk() async throws {
+        let root = try makeTree([
+            "Big/a/file": 400_000, "Big/b/file": 200_000, "Big/loose": 100_000,
+            "Small/x/file": 10_000, "top-loose": 50_000,
+        ])
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let tree = await DiskUsageScanner.scanTree(root, depth: 2)
+        XCTAssertTrue(tree.complete)
+        for sub in ["", "/Big", "/Big/a", "/Big/b", "/Small", "/Small/x"] {
+            XCTAssertNotNil(tree.sizes[root.path + sub], sub)
+        }
+        XCTAssertGreaterThan(tree.sizes[root.path + "/Big/a"] ?? 0, tree.sizes[root.path + "/Big/b"] ?? 0)
+
+        let folders = DiskMonitorReport.assemble(tree.sizes, home: root.path, limit: 10, expand: 1)
+        let paths = folders.map(\.path)
+        XCTAssertEqual(Set(paths), Set([root.path + "/Big/a", root.path + "/Big/b", root.path + "/Big/*",
+                                        root.path + "/Small", root.path + "/*"]))
+    }
+
+    func testScanTreeWithLargeOutputDoesNotBlock() async throws {
+        // ~3000 folders at depth 2: more output than a pipe buffer holds,
+        // which deadlocks if du's output is only read after it exits.
+        var layout: [String: Int] = [:]
+        for i in 0..<30 { for j in 0..<100 { layout["folder-with-a-long-name-\(i)/sub-\(j)-padding-padding/f"] = 1 } }
+        let root = try makeTree(layout)
+        defer { try? FileManager.default.removeItem(at: root) }
+
         let start = Date()
-        let task = Task { await DiskUsageScanner.scan(URL(fileURLWithPath: "/System/Library"), excluding: [], cancellable: true) }
-        try? await Task.sleep(nanoseconds: 200_000_000)
+        let tree = await DiskMonitorReport.withDeadline(30) { await DiskUsageScanner.scanTree(root, depth: 2) }
+        XCTAssertTrue(tree.complete)
+        XCTAssertEqual(tree.sizes.count, 1 + 30 + 3000)
+        XCTAssertLessThan(Date().timeIntervalSince(start), 25)
+    }
+
+    func testScanTreeStoppedEarlyIsPartialAndQuick() async {
+        // /System/Library takes many seconds to walk and needs no privacy
+        // permission; a cancelled walk must return right away, marked partial.
+        let start = Date()
+        let task = Task { await DiskUsageScanner.scanTree(URL(fileURLWithPath: "/System/Library"), depth: 2) }
+        try? await Task.sleep(nanoseconds: 50_000_000)
         task.cancel()
-        _ = await task.value
+        let tree = await task.value
+        XCTAssertFalse(tree.complete)
+        XCTAssertFalse(tree.failed)
         XCTAssertLessThan(Date().timeIntervalSince(start), 3)
+    }
+
+    func testScanTreeKillsAProcessThatIgnoresTerm() async throws {
+        // Stands in for a du that won't stop on SIGTERM. It records its pid
+        // so the test can check it was actually killed, not just abandoned.
+        let pidFile = NSTemporaryDirectory() + "burrow-scantree-\(UUID().uuidString).pid"
+        defer { try? FileManager.default.removeItem(atPath: pidFile) }
+        let start = Date()
+        let task = Task {
+            await DiskUsageScanner.scanTree(URL(fileURLWithPath: "/"), depth: 1, killGrace: 0.3,
+                                            command: (URL(fileURLWithPath: "/bin/sh"),
+                                                      ["-c", "echo $$ > '\(pidFile)'; trap '' TERM; echo '4\t/a'; while :; do sleep 0.1; done"]))
+        }
+        try await Task.sleep(nanoseconds: 300_000_000)
+        task.cancel()
+        let tree = await task.value
+        XCTAssertFalse(tree.complete)
+        XCTAssertEqual(tree.sizes["/a"], 4 * 1024, "output read before the stop is kept")
+        XCTAssertLessThan(Date().timeIntervalSince(start), 3)
+
+        let pid = try XCTUnwrap(Int32(String(contentsOfFile: pidFile).trimmingCharacters(in: .whitespacesAndNewlines)))
+        XCTAssertEqual(kill(pid, 0), -1, "SIGKILL ended the process that ignored SIGTERM")
+    }
+
+    func testScanTreeGivesUpOnAProcessThatNeverLetsGo() async {
+        // The shell is killed, but a child keeps the pipe open, so EOF never
+        // comes — like a du stuck in uninterruptible I/O. The scan must
+        // still return after the grace periods.
+        let start = Date()
+        let task = Task {
+            await DiskUsageScanner.scanTree(URL(fileURLWithPath: "/"), depth: 1, killGrace: 0.3,
+                                            command: (URL(fileURLWithPath: "/bin/sh"),
+                                                      ["-c", "trap '' TERM; echo '8\t/b'; sleep 5"]))
+        }
+        try? await Task.sleep(nanoseconds: 300_000_000)
+        task.cancel()
+        let tree = await task.value
+        XCTAssertFalse(tree.complete)
+        XCTAssertEqual(tree.sizes["/b"], 8 * 1024)
+        XCTAssertLessThan(Date().timeIntervalSince(start), 3)
+    }
+
+    func testParseSizesSkipsBrokenLines() {
+        let sizes = DiskUsageScanner.parseSizes("10\t/a\n20\t/a/b\nnot a line\n\t/c\n")
+        XCTAssertEqual(sizes, ["/a": Int64(10 * 1024), "/a/b": Int64(20 * 1024)])
+    }
+
+    func testAssembleFromAStoppedWalk() {
+        let home = "/Users/a"
+        // Stopped mid-walk: neither ~ nor ~/Library got a total, but some of
+        // Library's subfolders and all of ~/projects did.
+        let sizes: [String: Int64] = [
+            "/Users/a/projects": 30 * gb, "/Users/a/projects/app": 25 * gb,
+            "/Users/a/Library/Caches": 12 * gb, "/Users/a/Library/Developer": 40 * gb,
+            "/Users/a/Pictures": 2 * gb,
+        ]
+        let folders = DiskMonitorReport.assemble(sizes, home: home, limit: 10, expand: 1)
+        let byPath = Dictionary(uniqueKeysWithValues: folders.map { ($0.path, $0.bytes) })
+        XCTAssertEqual(byPath["/Users/a/Library/Developer"], 40 * gb)   // unfinished parent → its children
+        XCTAssertEqual(byPath["/Users/a/Library/Caches"], 12 * gb)
+        XCTAssertEqual(byPath["/Users/a/projects/app"], 25 * gb)         // biggest finished → expanded
+        XCTAssertEqual(byPath["/Users/a/projects/*"], 5 * gb)
+        XCTAssertEqual(byPath["/Users/a/Pictures"], 2 * gb)
+        XCTAssertNil(byPath["/Users/a/*"], "no home total, so no loose-files row")
+        XCTAssertNil(byPath["/Users/a/Library"])
+    }
+
+    func testRankingIsStableOnTies() {
+        let a = DiskMonitorReport.Folder(path: "/b", bytes: gb)
+        let b = DiskMonitorReport.Folder(path: "/a", bytes: gb)
+        XCTAssertEqual(DiskMonitorReport.rank([a, b], limit: 2).map(\.path), ["/a", "/b"])
+        XCTAssertEqual(DiskMonitorReport.rank([b, a], limit: 2).map(\.path), ["/a", "/b"])
+    }
+
+    func testPartialListIsLabelled() {
+        let text = DiskMonitorReport.formatTop(.init(folders: [.init(path: "/x", bytes: gb)], stoppedAfter: 300))
+        XCTAssertTrue(text.contains("Scan stopped after 5 min"))
+        // Stopped early (killed, cancelled): no claim about a time limit.
+        let early = DiskMonitorReport.formatTop(.init(folders: [], stoppedAfter: 12))
+        XCTAssertTrue(early.contains("Scan stopped before it finished"))
+        XCTAssertFalse(DiskMonitorReport.formatTop(.init(folders: [.init(path: "/x", bytes: gb)])).contains("Scan stopped"))
     }
 
     // MARK: - check()
@@ -375,8 +612,11 @@ final class DiskMonitorTests: XCTestCase {
         var granted = true
         var scans = 0
         var free: [String: Int64] = [:]
+        var unreadable: Set<String> = []
         var postDelay: UInt64 = 0
+        var postFails = false
         var scanDelay: UInt64 = 0
+        var partialScan = false
         var readDelay: UInt64 = 0
         var reads = 0
         var now = Date()
@@ -415,15 +655,19 @@ final class DiskMonitorTests: XCTestCase {
         deps.readAll = { paths in
             spy.reads += 1
             if spy.readDelay > 0 { try? await Task.sleep(nanoseconds: spy.readDelay) }
-            return paths.map { Reading(path: $0, total: total, free: spy.free[$0] ?? 50 * total / 100, failed: false) }
+            return paths.map {
+                spy.unreadable.contains($0) ? .unreadable($0)
+                    : Reading(path: $0, total: total, free: spy.free[$0] ?? 50 * total / 100, failed: false)
+            }
         }
         deps.scanTopFolders = {
             spy.scans += 1
             if spy.scanDelay > 0 { try? await Task.sleep(nanoseconds: spy.scanDelay) }
-            return .init(folders: [])
+            return .init(folders: [], stoppedAfter: spy.partialScan ? 300 : nil)
         }
         deps.post = { msg, token, channel in
             if spy.postDelay > 0 { try await Task.sleep(nanoseconds: spy.postDelay) }
+            if spy.postFails { throw SlackClient.SlackError.api("internal_error") }
             spy.posts.append((msg, token, channel))
         }
         deps.authorize = {
@@ -463,6 +707,175 @@ final class DiskMonitorTests: XCTestCase {
         XCTAssertEqual(spy.posts.first?.2, "C0123ABCD")
         XCTAssertEqual(spy.scans, 1)
         XCTAssertEqual(vm.slackStatus, "Report sent to Slack.")
+    }
+
+    @MainActor
+    func testUnreadablePathIsNotLowSpace() async throws {
+        let spy = Spy()
+        spy.unreadable = ["/Volumes/Backup"]   // e.g. unplugged
+        let (vm, cleanup) = try makeVM(spy) { $0.paths = ["/", "/Volumes/Backup"] }
+        defer { cleanup() }
+
+        await vm.check()
+        XCTAssertFalse(vm.isAlert)
+        XCTAssertEqual(vm.unreadablePaths, ["/Volumes/Backup"])
+        XCTAssertEqual(spy.notifications, 0)
+        // Not a low-disk alert: one "couldn't be read" post for the outage.
+        XCTAssertEqual(spy.posts.count, 1)
+        XCTAssertTrue(spy.posts[0].0.text.hasPrefix(":grey_question:"))
+        XCTAssertEqual(spy.scans, 0)
+
+        spy.free["/"] = 5 * gb
+        await vm.check()
+        XCTAssertTrue(vm.isAlert)
+        XCTAssertEqual(spy.notifications, 1)
+        XCTAssertEqual(spy.posts.count, 2)
+
+        // Readable again: no longer listed.
+        spy.unreadable = []
+        await vm.check()
+        XCTAssertEqual(vm.unreadablePaths, [])
+    }
+
+    @MainActor
+    func testLowPathThatBrieflyCantBeReadDoesNotNotifyAgain() async throws {
+        let spy = Spy()
+        spy.free["/Volumes/NAS"] = 1 * gb
+        let (vm, cleanup) = try makeVM(spy) { $0.paths = ["/", "/Volumes/NAS"] }
+        defer { cleanup() }
+
+        await vm.check()
+        XCTAssertEqual(spy.notifications, 1)
+        XCTAssertEqual(spy.posts.count, 1)
+        XCTAssertEqual(spy.scans, 1)
+        spy.unreadable = ["/Volumes/NAS"]   // read timed out once
+        await vm.check()
+        XCTAssertFalse(vm.isAlert)
+        // Nothing is low meanwhile: only the outage post, no low alert, no
+        // folder scan.
+        XCTAssertEqual(spy.posts.count, 2)
+        XCTAssertFalse(spy.posts[1].0.text.hasPrefix(":warning:"))
+        XCTAssertEqual(spy.scans, 1)
+        spy.unreadable = []
+        await vm.check()
+        XCTAssertEqual(spy.notifications, 1)
+        XCTAssertEqual(spy.posts.count, 3)
+    }
+
+    /// Low, then unreadable for `outage`, then back still low.
+    @MainActor
+    private func notificationsAfterOutage(_ outage: TimeInterval) async throws -> Int {
+        let spy = Spy()
+        spy.free["/Volumes/NAS"] = 1 * gb
+        let (vm, cleanup) = try makeVM(spy) { $0.paths = ["/", "/Volumes/NAS"] }
+        defer { cleanup() }
+
+        await vm.check()
+        spy.unreadable = ["/Volumes/NAS"]
+        await vm.check()
+        spy.now = spy.now.addingTimeInterval(outage)
+        await vm.check()
+        spy.unreadable = []
+        await vm.check()
+        return spy.notifications
+    }
+
+    @MainActor
+    func testLowPathBackAfterMoreThanADayAlertsAgain() async throws {
+        let day = DiskMonitorViewModel.unreadableHoldLimit
+        // Under a day (beyond the few minutes' slack): still held.
+        let shorter = try await notificationsAfterOutage(day - 10 * 60)
+        XCTAssertEqual(shorter, 1)
+        // A day, as between two daily runs: alerted again.
+        let aDay = try await notificationsAfterOutage(day)
+        XCTAssertEqual(aDay, 2)
+    }
+
+    @MainActor
+    func testOutageIsPostedOnceAPostSucceeds() async throws {
+        let spy = Spy()
+        spy.unreadable = ["/Volumes/NAS"]
+        spy.postFails = true   // e.g. the network is down too
+        let (vm, cleanup) = try makeVM(spy) { $0.paths = ["/", "/Volumes/NAS"] }
+        defer { cleanup() }
+
+        await vm.check()
+        XCTAssertTrue(spy.posts.isEmpty)
+        spy.postFails = false
+        await vm.check()
+        XCTAssertEqual(spy.posts.count, 1)
+        await vm.check()
+        XCTAssertEqual(spy.posts.count, 1)
+    }
+
+    @MainActor
+    func testOutageWithoutSlackPostsNothingAndDoesNotScan() async throws {
+        let spy = Spy()
+        spy.unreadable = ["/Volumes/NAS"]
+        let (vm, cleanup) = try makeVM(spy, token: nil) { $0.paths = ["/", "/Volumes/NAS"] }
+        defer { cleanup() }
+
+        await vm.check()
+        XCTAssertTrue(spy.posts.isEmpty)
+        XCTAssertEqual(spy.scans, 0)
+        XCTAssertEqual(spy.notifications, 0)
+    }
+
+    @MainActor
+    func testUnreadablePathIsPostedOncePerOutage() async throws {
+        let spy = Spy()   // alert-only (the default), "/" healthy
+        let (vm, cleanup) = try makeVM(spy) { $0.paths = ["/", "/Volumes/NAS"] }
+        defer { cleanup() }
+
+        await vm.check()
+        XCTAssertTrue(spy.posts.isEmpty)
+        spy.unreadable = ["/Volumes/NAS"]
+        await vm.check()
+        XCTAssertEqual(spy.posts.count, 1)
+        await vm.check()
+        await vm.check()
+        XCTAssertEqual(spy.posts.count, 1)   // none while it stays unreadable
+        spy.unreadable = []
+        await vm.check()
+        XCTAssertEqual(spy.posts.count, 1)
+        spy.unreadable = ["/Volumes/NAS"]    // a new outage
+        await vm.check()
+        XCTAssertEqual(spy.posts.count, 2)
+        XCTAssertEqual(spy.notifications, 0)
+        XCTAssertEqual(spy.scans, 0)
+    }
+
+    @MainActor
+    func testHeldPathRemovedThenReaddedNotifiesAgain() async throws {
+        let spy = Spy()
+        spy.free["/Volumes/NAS"] = 1 * gb
+        let (vm, cleanup) = try makeVM(spy) { $0.paths = ["/", "/Volumes/NAS"] }
+        defer { cleanup() }
+
+        await vm.check()
+        spy.unreadable = ["/Volumes/NAS"]
+        await vm.check()
+        vm.settings.paths = ["/"]
+        await vm.check()
+        spy.unreadable = []
+        vm.settings.paths = ["/", "/Volumes/NAS"]
+        await vm.check()
+        XCTAssertEqual(spy.notifications, 2)
+    }
+
+    @MainActor
+    func testRemovedPathLeavesUnreadableListAtOnce() async throws {
+        let spy = Spy()
+        spy.unreadable = ["/Volumes/Typo"]
+        let (vm, cleanup) = try makeVM(spy) { $0.paths = ["/", "/Volumes/Typo"] }
+        defer { cleanup() }
+
+        await vm.check()
+        XCTAssertEqual(vm.unreadablePaths, ["/Volumes/Typo"])
+        vm.settings.paths = ["/"]
+        // The tab, header and menu bar all drop it before the next reading.
+        XCTAssertEqual(vm.unreadablePaths, [])
+        XCTAssertEqual(vm.visibleReadings.map(\.path), ["/"])
     }
 
     @MainActor
@@ -573,6 +986,19 @@ final class DiskMonitorTests: XCTestCase {
         await vm.check()
         XCTAssertEqual(spy.scans, 3)            // older than an hour
         XCTAssertEqual(spy.posts.count, 4)
+    }
+
+    @MainActor
+    func testPartialTopFoldersAreNotCached() async throws {
+        let spy = Spy()
+        spy.free["/"] = 5 * gb
+        spy.partialScan = true
+        let (vm, cleanup) = try makeVM(spy) { _ in }
+        defer { cleanup() }
+
+        await vm.check()
+        await vm.check()
+        XCTAssertEqual(spy.scans, 2, "a partial list should be retried, not reused")
     }
 
     @MainActor
@@ -696,6 +1122,92 @@ final class DiskMonitorTests: XCTestCase {
         await waitUntil { spy.posts.count == 2 }
 
         XCTAssertEqual(spy.posts.count, 2)
+        vm.settings.enabled = false
+    }
+
+    @MainActor
+    func testDailyScheduleWaitsForItsTime() async throws {
+        let spy = Spy()
+        spy.free["/"] = 5 * gb
+        let (vm, cleanup) = try makeVM(spy) { $0.schedule = .daily; $0.alertOnly = false }
+        defer { cleanup() }
+
+        vm.settings.enabled = true
+        await waitUntil { vm.nextCheck != nil }
+        await settle()
+        XCTAssertTrue(spy.posts.isEmpty, "enabling a daily schedule must not check right away")
+
+        vm.settings.thresholdPercent = 30   // no immediate recheck either
+        await settle()
+        XCTAssertTrue(spy.posts.isEmpty)
+
+        // The daily time arrives (by wall clock): one check.
+        spy.now = try XCTUnwrap(vm.nextCheck).addingTimeInterval(1)
+        await waitUntil { spy.posts.count == 1 }
+        XCTAssertEqual(spy.posts.count, 1)
+        XCTAssertGreaterThan(try XCTUnwrap(vm.nextCheck), spy.now, "next run moves to the following day")
+        vm.settings.enabled = false
+    }
+
+    @MainActor
+    func testMissedDailyRunIsCaughtUpAtLaunch() async throws {
+        let spy = Spy()
+        let (vm, cleanup) = try makeVM(spy) { $0.enabled = true; $0.schedule = .daily; $0.alertOnly = false }
+        defer { cleanup(); vm.settings.enabled = false }
+        // Last daily run two days ago: today's (or yesterday's) was missed.
+        vm.setLastDailyRunForTesting(spy.now.addingTimeInterval(-2 * 24 * 3600))
+
+        vm.start()
+        await waitUntil { spy.posts.count == 1 }
+        XCTAssertEqual(spy.posts.count, 1)
+    }
+
+    @MainActor
+    func testNoCatchUpAtLaunchWhenNothingWasMissedButReadingsShow() async throws {
+        let spy = Spy()
+        let (vm, cleanup) = try makeVM(spy) { $0.enabled = true; $0.schedule = .daily; $0.alertOnly = false }
+        defer { cleanup(); vm.settings.enabled = false }
+        vm.setLastDailyRunForTesting(spy.now)
+
+        vm.start()
+        await waitUntil { !vm.lastReadings.isEmpty }
+        await settle()
+        XCTAssertTrue(spy.posts.isEmpty)
+        XCTAssertEqual(spy.notifications, 0)
+        XCTAssertFalse(vm.lastReadings.isEmpty, "the tab still gets numbers")
+        XCTAssertNil(vm.lastChecked, "a read-only refresh isn't a check")
+    }
+
+    @MainActor
+    func testDailyEditsRefreshReadingsOnly() async throws {
+        let spy = Spy()
+        spy.free["/Volumes/B"] = 1 * gb
+        let (vm, cleanup) = try makeVM(spy) { $0.schedule = .daily; $0.alertOnly = false }
+        defer { cleanup() }
+
+        vm.settings.enabled = true
+        await waitUntil { vm.nextCheck != nil }
+        vm.settings.paths = ["/", "/Volumes/B"]
+        await waitUntil { vm.lastReadings.map(\.path) == ["/", "/Volumes/B"] }
+        await settle()
+        XCTAssertEqual(vm.lastReadings.map(\.path), ["/", "/Volumes/B"])
+        XCTAssertTrue(spy.posts.isEmpty)
+        XCTAssertEqual(spy.notifications, 0)
+        vm.settings.enabled = false
+    }
+
+    @MainActor
+    func testMissedDailyCheckRunsOnWake() async throws {
+        let spy = Spy()
+        let (vm, cleanup) = try makeVM(spy) { $0.schedule = .daily; $0.alertOnly = false }
+        defer { cleanup() }
+
+        vm.settings.enabled = true
+        await waitUntil { vm.nextCheck != nil }
+        let due = try XCTUnwrap(vm.nextCheck)
+        vm.handleWake(now: due.addingTimeInterval(3600))   // asleep at the daily time
+        await waitUntil { spy.posts.count == 1 }
+        XCTAssertEqual(spy.posts.count, 1)
         vm.settings.enabled = false
     }
 

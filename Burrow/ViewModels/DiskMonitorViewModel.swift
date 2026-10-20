@@ -41,16 +41,28 @@ final class DiskMonitorViewModel: ObservableObject {
     /// How long a top-folder list is reused while a disk stays low, so each
     /// check doesn't walk the whole home folder again.
     private static let topFoldersMaxAge: TimeInterval = 3600
+    /// When the daily schedule last ran (or was set up), so a run missed
+    /// while Burrow wasn't running is caught up at launch.
+    private static let lastDailyRunKey = "diskMonitorLastDailyRun"
 
     @Published var settings: DiskMonitorSettings {
         didSet {
             guard settings != oldValue else { return }
             settings.save(to: defaults)
-            if settings.enabled != oldValue.enabled || settings.intervalMinutes != oldValue.intervalMinutes {
+            if settings.enabled != oldValue.enabled || settings.intervalMinutes != oldValue.intervalMinutes
+                || settings.schedule != oldValue.schedule || settings.dailyMinute != oldValue.dailyMinute {
+                // A schedule set up now has nothing to catch up on yet.
+                if settings.schedule == .daily { recordDailyRun() }
                 reschedule()
             } else if settings.enabled,
                       settings.thresholdPercent != oldValue.thresholdPercent || settings.paths != oldValue.paths {
-                recheckSoon()
+                if settings.schedule == .interval {
+                    recheckSoon()
+                } else {
+                    // Daily: the user chose when checks (and Slack posts)
+                    // happen, so only refresh what the tab shows.
+                    refreshReadingsSoon()
+                }
             }
         }
     }
@@ -76,11 +88,25 @@ final class DiskMonitorViewModel: ObservableObject {
     /// notification fires when this set grows; a path is only added once
     /// the notification was actually delivered.
     private var alertingPaths: Set<String> = []
+    /// When each currently unreadable path was first found unreadable, so a
+    /// long outage doesn't keep the low hold.
+    private var unreadableSince: [String: Date] = [:]
+    /// Unreadable paths already reported to Slack in this outage. Only set
+    /// once a post succeeded, so a failed post (or Slack set up later) still
+    /// reports it.
+    private var postedOutages: Set<String> = []
+    /// A path that was alerted as low and then unreadable for longer than
+    /// this is alerted again if it comes back still low. With a few minutes'
+    /// slack, so on a daily schedule "unreadable at one run, back at the
+    /// next" always counts, whatever the run's exact second.
+    static let unreadableHoldLimit: TimeInterval = 24 * 60 * 60
+    private static let holdLimitSlack: TimeInterval = 5 * 60
     /// A low-disk notification couldn't be delivered yet (permission still
     /// undetermined); granting permission re-checks right away.
     private var notificationPending = false
     private var topFoldersCache: (date: Date, alerting: Set<String>, top: DiskMonitorReport.TopFolders)?
     private var wakeObserver: NSObjectProtocol?
+    private var timeZoneObserver: NSObjectProtocol?
 
     init(defaults: UserDefaults = .standard, keychain: Keychain = .slack,
          dependencies: Dependencies = Dependencies(), recheckDelay: UInt64 = 1_000_000_000,
@@ -97,8 +123,9 @@ final class DiskMonitorViewModel: ObservableObject {
 
     // MARK: - Scheduling
 
-    /// Starts the timer if enabled and catches up after sleep. Called once
-    /// from `AppDelegate`; safe to call again.
+    /// Starts the timer if enabled and catches up after sleep, after a time
+    /// zone change, and on launch for a daily run missed while Burrow wasn't
+    /// running. Called once from `AppDelegate`; safe to call again.
     func start() {
         if wakeObserver == nil {
             wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
@@ -107,18 +134,54 @@ final class DiskMonitorViewModel: ObservableObject {
                 Task { @MainActor in self?.handleWake() }
             }
         }
+        if timeZoneObserver == nil {
+            timeZoneObserver = NotificationCenter.default.addObserver(
+                forName: .NSSystemTimeZoneDidChange, object: nil, queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor in self?.handleTimeZoneChange() }
+            }
+        }
         guard loop == nil else { return }
-        reschedule()
+        reschedule(checkNow: settings.schedule == .daily ? missedDailyRun() : nil)
+    }
+
+    /// The daily time is local time; after travel, recompute it.
+    func handleTimeZoneChange() {
+        // Make sure Calendar.current picks up the new zone.
+        NSTimeZone.resetSystemTimeZone()
+        guard settings.enabled, settings.schedule == .daily else { return }
+        reschedule(checkNow: false)
+    }
+
+    /// A daily run was due since the last one (or since the schedule was set
+    /// up) and didn't happen, e.g. the Mac was off at that time.
+    func missedDailyRun(now: Date? = nil) -> Bool {
+        guard settings.schedule == .daily,
+              let last = defaults.object(forKey: Self.lastDailyRunKey) as? Date
+        else { return false }
+        return last < settings.lastScheduledRun(atOrBefore: now ?? deps.now())
+    }
+
+    private func recordDailyRun() {
+        defaults.set(deps.now(), forKey: Self.lastDailyRunKey)
+    }
+
+    func setLastDailyRunForTesting(_ date: Date) {
+        defaults.set(date, forKey: Self.lastDailyRunKey)
     }
 
     /// The timer notices an overdue check within one slice; on wake, run it
-    /// right away and restart the interval from here.
+    /// right away (also a daily check missed while asleep) and restart the
+    /// schedule from here.
     func handleWake(now: Date = Date()) {
         guard settings.enabled, let next = nextCheck, now >= next else { return }
-        reschedule()
+        reschedule(checkNow: true)
     }
 
-    private func reschedule() {
+    /// Restarts the timer. By default an interval schedule checks at once and
+    /// a daily one waits for its time, so enabling it at noon doesn't post.
+    private func reschedule(checkNow: Bool? = nil) {
+        let checkFirst = checkNow ?? (settings.schedule == .interval)
         generation += 1
         loop?.cancel()
         loop = nil
@@ -128,6 +191,8 @@ final class DiskMonitorViewModel: ObservableObject {
         guard settings.enabled else {
             // Start fresh next time: a disk still low on re-enable notifies again.
             alertingPaths = []
+            unreadableSince = [:]
+            postedOutages = []
             notificationPending = false
             lastReadings = []
             topFoldersCache = nil
@@ -136,6 +201,8 @@ final class DiskMonitorViewModel: ObservableObject {
         }
         // Only while monitoring: no Keychain access on launch when it's off.
         refreshSlackToken()
+        // Daily and not checking now: still show current numbers in the tab.
+        if !checkFirst { refreshReadingsSoon(delay: 0) }
         // Ask in parallel, never awaited by the timer: the system prompt only
         // returns once the user answers, and an ignored prompt must not stop
         // monitoring. A first alert sent before the answer isn't delivered,
@@ -145,18 +212,26 @@ final class DiskMonitorViewModel: ObservableObject {
             let granted = await self.deps.authorize()
             // The hint reflects the real setting, not a failed request.
             await self.refreshNotificationStatus()
-            if granted && self.notificationPending && self.settings.enabled { self.recheckSoon() }
+            // Not on a daily schedule: a re-check there would post outside
+            // the chosen time; the held-back alert waits for the next run.
+            if granted && self.notificationPending && self.settings.enabled && self.settings.schedule == .interval {
+                self.recheckSoon()
+            }
         }
         loop = Task { [weak self] in
+            var runNow = checkFirst
             while !Task.isCancelled {
                 let slice: TimeInterval
                 do {
                     guard let self else { return }
                     // Unstructured, so cancelling the loop (interval change)
                     // never cancels a Slack post that's already in flight.
-                    Task { await self.check() }
-                    let minutes = max(1, self.settings.intervalMinutes)
-                    self.nextCheck = self.deps.now().addingTimeInterval(TimeInterval(minutes * 60))
+                    if runNow {
+                        if self.settings.schedule == .daily { self.recordDailyRun() }
+                        Task { await self.check() }
+                    }
+                    runNow = true
+                    self.nextCheck = self.settings.nextRun(after: self.deps.now())
                     slice = self.timerSlice
                 }
                 // Wait until `nextCheck` by wall clock, in short slices: one
@@ -171,6 +246,21 @@ final class DiskMonitorViewModel: ObservableObject {
                     try? await Task.sleep(nanoseconds: UInt64(min(remaining, slice) * 1_000_000_000))
                 }
             }
+        }
+    }
+
+    /// Read-only refresh of the volume readings for the tab and menu bar: no
+    /// notification, no Slack, alert state untouched. Debounced like
+    /// `recheckSoon`.
+    private func refreshReadingsSoon(delay: UInt64? = nil) {
+        pendingRecheck?.cancel()
+        let gen = generation
+        pendingRecheck = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: delay ?? self?.recheckDelay ?? 0)
+            guard !Task.isCancelled, let self, self.settings.enabled else { return }
+            let readings = await self.deps.readAll(self.settings.paths)
+            guard gen == self.generation, !self.isChecking else { return }
+            self.lastReadings = readings
         }
     }
 
@@ -199,9 +289,19 @@ final class DiskMonitorViewModel: ObservableObject {
 
     var isSlackConfigured: Bool { hasSlackToken && !settings.slackChannel.isEmpty }
 
-    var isAlert: Bool {
-        DiskMonitorReport.isAlert(lastReadings, threshold: settings.thresholdPercent)
+    /// The last readings of paths still in the settings, for the tab and the
+    /// menu bar: a removed path disappears at once, not at the next reading.
+    var visibleReadings: [DiskMonitorReport.Reading] {
+        lastReadings.filter { settings.paths.contains($0.path) }
     }
+
+    var isAlert: Bool {
+        DiskMonitorReport.isAlert(visibleReadings, threshold: settings.thresholdPercent)
+    }
+
+    /// Watched paths the last reading couldn't read (not mounted, a typo, or
+    /// a mount that didn't answer in time).
+    var unreadablePaths: [String] { visibleReadings.filter(\.failed).map(\.path) }
 
     /// Reads every path, notifies on a new alert and posts to Slack when
     /// configured. Called by the timer, re-checks and "Check Now". If a check
@@ -222,12 +322,30 @@ final class DiskMonitorViewModel: ObservableObject {
 
         let gen = generation
         let s = settings
+        // Outages are timed from when the check started, not how long the read took.
+        let now = deps.now()
         let readings = await deps.readAll(s.paths)
         guard gen == generation else { return }
         lastReadings = readings
         lastChecked = Date()
 
-        let alerting = Set(readings.filter { $0.isLow(threshold: s.thresholdPercent) }.map(\.path))
+        let low = Set(readings.filter { $0.isLow(threshold: s.thresholdPercent) }.map(\.path))
+        let failed = Set(readings.filter(\.failed).map(\.path))
+        // Outages: a path that's back after more than a day is alerted again
+        // if still low; one not yet reported is posted once (below).
+        for (path, since) in unreadableSince where !failed.contains(path) {
+            if now.timeIntervalSince(since) > Self.unreadableHoldLimit - Self.holdLimitSlack {
+                alertingPaths.remove(path)
+            }
+            unreadableSince[path] = nil
+        }
+        for path in failed where unreadableSince[path] == nil { unreadableSince[path] = now }
+        postedOutages.formIntersection(failed)
+        let unreportedOutages = failed.subtracting(postedOutages)
+        // A path that was low and now can't be read (a NAS timing out, a
+        // drive unplugged) stays counted, so it doesn't notify again when
+        // it's back and still low — unless it was gone for over a day.
+        let alerting = low.union(alertingPaths.intersection(failed))
         if alerting.isSubset(of: alertingPaths) {
             alertingPaths = alerting
             notificationPending = false
@@ -249,8 +367,9 @@ final class DiskMonitorViewModel: ObservableObject {
             }
         }
 
-        let alert = !alerting.isEmpty
-        guard alert || !s.alertOnly else { return }
+        let alert = !low.isEmpty
+        // Alert-only still posts a path that became unreadable, once per outage.
+        guard alert || !unreportedOutages.isEmpty || !s.alertOnly else { return }
 
         // The report only goes to Slack. Without a token and a channel there is
         // nothing to send, so don't walk the home folder either: it's slow, and
@@ -260,7 +379,7 @@ final class DiskMonitorViewModel: ObservableObject {
         guard let token, !settings.slackChannel.isEmpty else { return }
 
         let wantTop = alert && s.includeTopFolders
-        let top = wantTop ? await topFolders(alerting: alerting, generation: gen) : nil
+        let top = wantTop ? await topFolders(alerting: low, generation: gen) : nil
         guard gen == generation else { return }
         // Token removed (Remove Token) or channel cleared during the scan: no post.
         guard hasSlackToken, !settings.slackChannel.isEmpty else { return }
@@ -268,7 +387,9 @@ final class DiskMonitorViewModel: ObservableObject {
             host: s.displayName, readings: readings, threshold: s.thresholdPercent,
             topFolders: top, includeTopSection: wantTop, mentions: settings.slackMentions
         )
-        await post(message, token: token, channel: settings.slackChannel, success: "Report sent to Slack.")
+        let posted = await post(message, token: token, channel: settings.slackChannel, success: "Report sent to Slack.")
+        // Any report listing an unreadable path reports its outage.
+        if posted && gen == generation { postedOutages.formUnion(failed) }
     }
 
     /// The cached list while it's fresh and no new path became low;
@@ -280,8 +401,10 @@ final class DiskMonitorViewModel: ObservableObject {
             return cache.top
         }
         let top = await deps.scanTopFolders()
-        // A stale check (monitor reset meanwhile) must not refill the cache.
-        if let top, gen == generation { topFoldersCache = (deps.now(), alerting, top) }
+        // A stale check (monitor reset meanwhile) must not refill the cache,
+        // and a partial list (walk hit its time limit) isn't worth keeping:
+        // the next check should try the full walk again.
+        if let top, !top.partial, gen == generation { topFoldersCache = (deps.now(), alerting, top) }
         return top
     }
 
@@ -295,13 +418,16 @@ final class DiskMonitorViewModel: ObservableObject {
         await post(message, token: token, channel: settings.slackChannel, success: "Test message sent.")
     }
 
-    private func post(_ message: SlackClient.Message, token: String, channel: String, success: String) async {
+    @discardableResult
+    private func post(_ message: SlackClient.Message, token: String, channel: String, success: String) async -> Bool {
         do {
             try await deps.post(message, token, channel)
             slackStatus = success
+            return true
         } catch {
             logger.error("Slack post failed: \(error.localizedDescription, privacy: .public)")
             slackStatus = Self.explain(error)
+            return false
         }
     }
 
@@ -317,6 +443,12 @@ final class DiskMonitorViewModel: ObservableObject {
         case "missing_scope": return "The Slack app needs the chat:write scope."
         default: return "Slack error: \(code)."
         }
+    }
+
+    /// "Reset to Defaults…": options back to defaults, keeping monitoring
+    /// on/off and the Slack connection (see `resetToDefaults`).
+    func resetSettings() {
+        settings = settings.resetToDefaults()
     }
 
     // MARK: - Slack token (Keychain)

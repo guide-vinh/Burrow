@@ -51,39 +51,179 @@ enum DiskUsageScanner {
     }
 
     /// Run `du -d 1 -k` on `url`: the folder's recursive total plus its
-    /// immediate subdirectories with sizes. Basenames in `excluding` are
-    /// pruned at any depth (Analyze's list by default; the disk monitor
-    /// passes its own). With `cancellable`, a cancelled task terminates
-    /// `du` instead of waiting for the walk. With `sameVolume`, `du -x`
-    /// stays on `url`'s volume instead of descending into mounts under it.
-    static func scan(_ url: URL, excluding: [String] = excludedNames, cancellable: Bool = false,
-                     sameVolume: Bool = false) async -> FolderScan {
+    /// immediate subdirectories with sizes. Excluded basenames are pruned.
+    static func scan(_ url: URL) async -> FolderScan {
         var args = ["-d", "1", "-k"]
+        for name in excludedNames { args.append(contentsOf: ["-I", name]) }
+        args.append(url.standardizedFileURL.path)
+
+        guard let output = await runDu(args) else {
+            return FolderScan(total: 0, children: [])
+        }
+        return parse(output, root: url.standardizedFileURL)
+    }
+
+    /// Every folder up to `depth` levels below `url` with its size, from a
+    /// single `du -d <depth> -k` walk (the disk monitor uses depth 2, so it
+    /// walks the home folder once instead of once per expanded folder).
+    struct TreeScan: Sendable {
+        /// Folder path → bytes. A walk stopped early only lists the folders
+        /// `du` had finished (it prints each folder after its contents), so
+        /// the folder it was inside when stopped is missing entirely.
+        let sizes: [String: Int64]
+        /// False when the walk was stopped (task cancelled) before the end.
+        let complete: Bool
+        /// `du` couldn't be started at all.
+        var failed = false
+    }
+
+    /// Cancelling the task stops `du`; the folders it had finished are still
+    /// returned, with `complete == false`. `sameVolume` adds `-x`.
+    ///
+    /// Output is read as it arrives (a deep listing can exceed the pipe
+    /// buffer). Stopping escalates: SIGTERM, then SIGKILL after `killGrace`,
+    /// and after another `killGrace` the scan returns what it has even if
+    /// `du` hasn't exited — one stuck in uninterruptible I/O (a broken
+    /// network or File Provider mount) ignores both signals.
+    /// `command` replaces `/usr/bin/du` and its arguments, for tests.
+    static func scanTree(
+        _ url: URL,
+        depth: Int,
+        excluding: [String] = [],
+        sameVolume: Bool = false,
+        killGrace: TimeInterval = 5,
+        command: (URL, [String])? = nil
+    ) async -> TreeScan {
+        var args = ["-d", String(depth), "-k"]
         if sameVolume { args.append("-x") }
         for name in excluding { args.append(contentsOf: ["-I", name]) }
         args.append(url.standardizedFileURL.path)
 
-        guard let output = await runDu(args, cancellable: cancellable) else {
-            return FolderScan(total: 0, children: [])
+        let process = Process()
+        let run = TreeRun()
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { (cont: CheckedContinuation<TreeScan, Never>) in
+                run.setContinuation(cont)
+                process.executableURL = command?.0 ?? URL(fileURLWithPath: "/usr/bin/du")
+                process.arguments = command?.1 ?? args
+                let pipe = Pipe()
+                process.standardOutput = pipe
+                process.standardError = FileHandle.nullDevice
+                pipe.fileHandleForReading.readabilityHandler = { handle in
+                    let chunk = handle.availableData
+                    if chunk.isEmpty {
+                        handle.readabilityHandler = nil
+                        run.reachedEOF()
+                    } else {
+                        run.append(chunk)
+                    }
+                }
+                // terminationHandler, not waitUntilExit(): the latter waits on
+                // the calling thread's run loop and can hang on a GCD thread.
+                process.terminationHandler = { p in run.exited(normally: p.terminationReason == .exit) }
+                if Task.isCancelled {
+                    pipe.fileHandleForReading.readabilityHandler = nil
+                    run.finish(complete: false)
+                    return
+                }
+                do {
+                    try process.run()
+                    if Task.isCancelled { stop(process, run, grace: killGrace) }
+                } catch {
+                    logger.error("du launch failed: \(error.localizedDescription, privacy: .public)")
+                    pipe.fileHandleForReading.readabilityHandler = nil
+                    run.finish(complete: false, failed: true)
+                }
+            }
+        } onCancel: {
+            stop(process, run, grace: killGrace)
         }
-        return parse(output, root: url.standardizedFileURL, excluding: excluding)
+    }
+
+    /// SIGTERM now, SIGKILL after `grace`, then give up waiting after
+    /// another `grace` and return the output read so far.
+    private static func stop(_ process: Process, _ run: TreeRun, grace: TimeInterval) {
+        if process.isRunning { process.terminate() }
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + grace) {
+            if process.isRunning { kill(process.processIdentifier, SIGKILL) }
+            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + grace) {
+                run.finish(complete: false)
+            }
+        }
+    }
+
+    /// Collects one `du` run's output and resumes the scan exactly once:
+    /// when the output has ended and the process has exited, or when
+    /// `finish` is called first (cancelled before launch, launch failed,
+    /// or a stuck process that's no longer worth waiting for).
+    private final class TreeRun: @unchecked Sendable {
+        private let lock = NSLock()
+        private var data = Data()
+        private var eof = false
+        private var exitedNormally: Bool?
+        private var resumed = false
+        private var continuation: CheckedContinuation<TreeScan, Never>?
+
+        func setContinuation(_ cont: CheckedContinuation<TreeScan, Never>) {
+            lock.lock(); continuation = cont; lock.unlock()
+        }
+
+        func append(_ chunk: Data) {
+            lock.lock(); data.append(chunk); lock.unlock()
+        }
+
+        func reachedEOF() {
+            lock.lock(); eof = true; lock.unlock()
+            finishIfDone()
+        }
+
+        func exited(normally: Bool) {
+            lock.lock(); exitedNormally = normally; lock.unlock()
+            finishIfDone()
+        }
+
+        private func finishIfDone() {
+            lock.lock()
+            let done = eof && exitedNormally != nil
+            let complete = exitedNormally == true
+            lock.unlock()
+            if done { finish(complete: complete) }
+        }
+
+        func finish(complete: Bool, failed: Bool = false) {
+            lock.lock()
+            guard !resumed, let cont = continuation else { lock.unlock(); return }
+            resumed = true
+            var output = String(decoding: data, as: UTF8.self)
+            lock.unlock()
+            // A stopped du can end mid-line; drop that fragment so a cut-off
+            // path never becomes a bogus folder.
+            if !output.hasSuffix("\n") {
+                output = output.lastIndex(of: "\n").map { String(output[...$0]) } ?? ""
+            }
+            cont.resume(returning: TreeScan(sizes: parseSizes(output), complete: complete, failed: failed))
+        }
+    }
+
+    /// `du -k` lines ("<kbytes>\t<path>") → path → bytes. A line cut short
+    /// by termination has no tab or no number and is skipped.
+    static func parseSizes(_ output: String) -> [String: Int64] {
+        var sizes: [String: Int64] = [:]
+        for line in output.split(separator: "\n") {
+            guard let tab = line.firstIndex(of: "\t"),
+                  let kb = Int64(line[..<tab].trimmingCharacters(in: .whitespaces))
+            else { continue }
+            let path = URL(fileURLWithPath: String(line[line.index(after: tab)...])).standardizedFileURL.path
+            sizes[path] = kb * 1024
+        }
+        return sizes
     }
 
     // MARK: - Private
 
-    private static func runDu(_ args: [String], cancellable: Bool = false) async -> String? {
-        let process = Process()
-        guard cancellable else { return await runDu(process, args) }
-        return await withTaskCancellationHandler {
-            await runDu(process, args)
-        } onCancel: {
-            // Exits du; its terminationHandler still resumes the continuation.
-            if process.isRunning { process.terminate() }
-        }
-    }
-
-    private static func runDu(_ process: Process, _ args: [String]) async -> String? {
+    private static func runDu(_ args: [String]) async -> String? {
         await withCheckedContinuation { (cont: CheckedContinuation<String?, Never>) in
+            let process = Process()
             process.executableURL = URL(fileURLWithPath: "/usr/bin/du")
             process.arguments = args
             let pipe = Pipe()
@@ -94,16 +234,8 @@ enum DiskUsageScanner {
                 let data = pipe.fileHandleForReading.readDataToEndOfFile()
                 cont.resume(returning: String(data: data, encoding: .utf8))
             }
-            // Cancelled before launch: don't start a walk nobody will read.
-            if Task.isCancelled {
-                cont.resume(returning: nil)
-                return
-            }
             do {
                 try process.run()
-                // A cancel that landed between the check above and run()
-                // found nothing to terminate; catch it here.
-                if Task.isCancelled { process.terminate() }
             } catch {
                 logger.error("du launch failed: \(error.localizedDescription, privacy: .public)")
                 cont.resume(returning: nil)
@@ -112,7 +244,7 @@ enum DiskUsageScanner {
     }
 
     /// Parse `du -k` output ("<kbytes>\t<path>" per line) into a FolderScan.
-    static func parse(_ output: String, root: URL, excluding: [String] = excludedNames) -> FolderScan {
+    static func parse(_ output: String, root: URL) -> FolderScan {
         let rootPath = root.path
         var total: Int64 = 0
         var children: [DiskEntry] = []
@@ -128,7 +260,7 @@ enum DiskUsageScanner {
                 continue
             }
             let url = URL(fileURLWithPath: path).standardizedFileURL
-            if excluding.contains(url.lastPathComponent) { continue }
+            if excludedNames.contains(url.lastPathComponent) { continue }
             children.append(DiskEntry(
                 id: UUID(),
                 url: url,

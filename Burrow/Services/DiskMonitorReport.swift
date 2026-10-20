@@ -17,8 +17,10 @@ enum DiskMonitorReport {
         }
         var usedPercent: Double { 100 - freePercent }
 
-        /// Unreadable, or free space at or below the threshold.
-        func isLow(threshold: Double) -> Bool { failed || freePercent <= threshold }
+        /// Free space at or below the threshold. An unreadable path (e.g. an
+        /// unplugged drive) isn't low: it's reported as "couldn't be read"
+        /// instead, so it doesn't raise a low-disk alert on every check.
+        func isLow(threshold: Double) -> Bool { !failed && freePercent <= threshold }
 
         static func unreadable(_ path: String) -> Reading {
             Reading(path: path, total: 0, free: 0, failed: true)
@@ -37,10 +39,17 @@ enum DiskMonitorReport {
     struct TopFolders: Equatable {
         var folders: [Folder]
         var limited = false
+        /// Set when the walk hit its time limit (seconds): only the folders
+        /// measured by then are listed.
+        var stoppedAfter: TimeInterval?
+
+        var partial: Bool { stoppedAfter != nil }
     }
 
     static let alertColor = "#E01E5A"
     static let okColor = "#31E5C5"
+    /// A path couldn't be read, but nothing is low.
+    static let warnColor = "#ECB22E"
 
     // MARK: - Reading volumes
 
@@ -144,7 +153,7 @@ enum DiskMonitorReport {
 
     // MARK: - Alert decision
 
-    /// True when any path is unreadable or at/below the threshold.
+    /// True when any path is at/below the threshold.
     static func isAlert(_ readings: [Reading], threshold: Double) -> Bool {
         readings.contains { $0.isLow(threshold: threshold) }
     }
@@ -156,10 +165,11 @@ enum DiskMonitorReport {
         String(format: "%.1f GB", Double(bytes) / 1e9)
     }
 
-    /// Percent as written in Slack and notifications: one fixed, locale-free
-    /// format ("7.5", "10"), so a report never mixes "7,5" with "4.0".
+    /// Percent as written in Slack, notifications, the menu and the tab:
+    /// exactly one decimal, locale-free ("7.5", "10.0", like diskmon), so a
+    /// figure never jumps between "96" and "95.9" or reads "7,5".
     static func percent(_ value: Double) -> String {
-        value.formatted(.number.precision(.fractionLength(0...1)).locale(Locale(identifier: "en_US_POSIX")))
+        String(format: "%.1f", locale: Locale(identifier: "en_US_POSIX"), value)
     }
 
     /// The threshold everywhere it's shown (Slack, picker, menu): two
@@ -172,6 +182,7 @@ enum DiskMonitorReport {
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
         f.calendar = Calendar(identifier: .gregorian)
+        f.timeZone = .autoupdatingCurrent
         f.dateFormat = "yyyy-MM-dd HH:mm zzz"
         return f
     }()
@@ -201,26 +212,34 @@ enum DiskMonitorReport {
             lines.append("Free space `\(escape(r.path))`: *\(gb(r.free))* of \(gb(r.total)) "
                 + "(\(percent(r.freePercent))% free, threshold \(Self.threshold(threshold))\(state))")
         }
-        if alert { lines.append("The disk is running low - this needs a look.") }
+        let unreadable = readings.contains(where: \.failed)
+        if alert {
+            lines.append("The disk is running low - this needs a look.")
+        } else if unreadable {
+            lines.append("A watched path couldn't be read - check that it's mounted.")
+        }
         lines.append("Checked: \(stampFormatter.string(from: now))")
 
         var blocks = [SlackClient.Block.section(lines.joined(separator: "\n"))]
-        // A requested scan that returned nil timed out; say so rather than
-        // dropping the section silently.
+        // A requested scan that returned nil couldn't run at all (a slow one
+        // still returns a partial list); say so rather than dropping the
+        // section silently.
         if let topFolders {
             blocks.append(.section(formatTop(topFolders)))
         } else if includeTopSection {
-            blocks.append(.section("*Top space consumers*\n_Scan didn't finish in time; list omitted._"))
+            blocks.append(.section("*Top space consumers*\n_Folder sizes couldn't be measured this time._"))
         }
         blocks.append(.context(signature(version: version)))
 
         // Mentions go in the top-level text, not an attachment block: Slack
         // reliably notifies for mentions in the message body.
-        var text = alert ? ":warning: Low disk space - \(host)" : ":file_folder: Disk report - \(host)"
+        var text = alert ? ":warning: Low disk space - \(host)"
+            : unreadable ? ":grey_question: Path couldn't be read - \(host)"
+            : ":file_folder: Disk report - \(host)"
         if alert && !mentions.isEmpty {
             text += "\n" + mentions.map(SlackClient.mention).joined(separator: " ")
         }
-        return SlackClient.Message(text: text, attachments: [.init(color: alert ? alertColor : okColor, blocks: blocks)])
+        return SlackClient.Message(text: text, attachments: [.init(color: alert ? alertColor : unreadable ? warnColor : okColor, blocks: blocks)])
     }
 
     /// Footer on every message, so the channel can tell Burrow's reports
@@ -251,6 +270,13 @@ enum DiskMonitorReport {
                 return String(repeating: " ", count: max(0, 9 - size.count)) + size + "  " + escape(path)
             }
             text += "\n```\n" + rows.joined(separator: "\n") + "\n```"
+        }
+        if let seconds = top.stoppedAfter {
+            // The actual run time: a walk stopped early (du killed, task
+            // cancelled) shouldn't claim it ran into the time limit.
+            let minutes = Int((seconds / 60).rounded())
+            let stopped = minutes >= 1 ? "Scan stopped after \(minutes) min" : "Scan stopped before it finished"
+            text += "\n_\(stopped); folders not measured by then are missing from this list._"
         }
         if top.limited {
             text += "\n_Burrow doesn't have Full Disk Access, so Desktop, Documents, Downloads, Music, Photos and app data (Mail, Messages, containers…) were skipped._"
@@ -288,56 +314,80 @@ enum DiskMonitorReport {
     /// folders (iCloud Drive, Dropbox…) whose walk can hit the network.
     static let cloudNames = ["Mobile Documents", "CloudStorage"]
 
-    /// The largest folders, bounded by `timeout`; nil when the scan didn't
-    /// finish. With Full Disk Access nothing is excluded (containers,
-    /// simulators and the Trash are what tends to fill a disk); without it,
-    /// the protected app-data folders are skipped and the report says so.
-    static func scanTopFolders(timeout: TimeInterval = 120) async -> TopFolders? {
+    /// The largest folders from one `du -d 2` walk of the home folder,
+    /// stopped after `timeout` (5 minutes, like diskmon). A stopped walk
+    /// still reports what it measured, marked partial, instead of nothing.
+    /// With Full Disk Access only File Provider folders are skipped
+    /// (containers, simulators and the Trash are what tends to fill a disk);
+    /// without it, the protected folders are skipped and the report says so.
+    /// Nil only when `du` couldn't run at all.
+    static func scanTopFolders(timeout: TimeInterval = 300) async -> TopFolders? {
         let fullAccess = FullDiskAccess.probe()
-        return await withTimeout(timeout) {
-            TopFolders(folders: await scanFolders(excluding: fullAccess ? cloudNames : protectedNames),
-                       limited: !fullAccess)
+        let home = URL(fileURLWithPath: NSHomeDirectory()).standardizedFileURL
+        let started = Date()
+        let tree = await withDeadline(timeout) {
+            await DiskUsageScanner.scanTree(home, depth: 2,
+                                            excluding: fullAccess ? cloudNames : protectedNames,
+                                            sameVolume: true)
         }
+        guard !tree.failed else { return nil }
+        return TopFolders(folders: assemble(tree.sizes, home: home.path),
+                          limited: !fullAccess,
+                          stoppedAfter: tree.complete ? nil : Date().timeIntervalSince(started))
     }
 
-    /// `work`'s result, or nil after `timeout` — at which point `work` is
-    /// cancelled. The scan runs `du` in cancellable mode, so losing the
-    /// race terminates the walk instead of leaving it running.
-    static func withTimeout<T: Sendable>(
+    /// Runs `work`, cancelling it once `timeout` passes, and returns its
+    /// result either way — unlike a race, a cancelled walk's partial output
+    /// is kept. Cancelling the caller cancels `work` too.
+    static func withDeadline<T: Sendable>(
         _ timeout: TimeInterval,
         _ work: @escaping @Sendable () async -> T
-    ) async -> T? {
-        await withTaskGroup(of: T?.self) { group in
-            group.addTask { await work() }
-            group.addTask {
-                try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
-                return nil
-            }
-            let first = await group.next() ?? nil
-            group.cancelAll()
-            return first
+    ) async -> T {
+        let task = Task { await work() }
+        let timer = Task {
+            try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+            if !Task.isCancelled { task.cancel() }
+        }
+        defer { timer.cancel() }
+        return await withTaskCancellationHandler {
+            await task.value
+        } onCancel: {
+            task.cancel()
         }
     }
 
-    /// Largest folders under the home directory: one `du` level, with the
-    /// biggest few expanded one level deeper so ~/Library doesn't swallow
-    /// the whole list. Unlike Analyze, only `excluding` is skipped.
-    static func scanFolders(limit: Int = 8, expand: Int = 3, excluding: [String] = []) async -> [Folder] {
-        let home = URL(fileURLWithPath: NSHomeDirectory())
-        let top = await DiskUsageScanner.scan(home, excluding: excluding, cancellable: true, sameVolume: true)
-        guard !Task.isCancelled else { return [] }
-        let first = top.children.sorted { $0.size > $1.size }
+    /// Builds the ranked list from a depth-2 walk of `home`: its subfolders,
+    /// with the biggest few replaced by their own subfolders (so ~/Library
+    /// doesn't swallow the list) plus "<folder>/*" rows for loose files.
+    /// From a stopped walk, a folder that wasn't finished has no total of
+    /// its own; it is represented by the subfolders that were.
+    static func assemble(_ sizes: [String: Int64], home: String, limit: Int = 8, expand: Int = 3) -> [Folder] {
+        func parent(_ path: String) -> String { (path as NSString).deletingLastPathComponent }
 
-        var result = first.dropFirst(expand).map { Folder(path: $0.url.path, bytes: $0.size) }
-        result += looseFiles(in: home.path, total: top.total, children: top.children.map(\.size))
-        for entry in first.prefix(expand) {
-            let deeper = await DiskUsageScanner.scan(entry.url, excluding: excluding, cancellable: true, sameVolume: true)
-            guard !Task.isCancelled else { return [] }
-            if deeper.children.isEmpty {
-                result.append(Folder(path: entry.url.path, bytes: entry.size))
+        let firstLevel = sizes.filter { parent($0.key) == home && $0.key != home }
+        var children: [String: [Folder]] = [:]
+        for (path, bytes) in sizes where path != home && parent(path) != home {
+            let p = parent(path)
+            if parent(p) == home { children[p, default: []].append(Folder(path: path, bytes: bytes)) }
+        }
+
+        let biggest = firstLevel.sorted { ($0.value, $1.key) > ($1.value, $0.key) }.prefix(expand).map(\.key)
+        // Unfinished first-level folders appear only through their children.
+        let expanded = Set(biggest).union(children.keys.filter { firstLevel[$0] == nil })
+
+        var result = firstLevel.filter { !expanded.contains($0.key) }.map { Folder(path: $0.key, bytes: $0.value) }
+        if let total = sizes[home] {
+            result += looseFiles(in: home, total: total, children: Array(firstLevel.values))
+        }
+        for folder in expanded {
+            let kids = children[folder] ?? []
+            if kids.isEmpty, let bytes = firstLevel[folder] {
+                result.append(Folder(path: folder, bytes: bytes))
             } else {
-                result += deeper.children.map { Folder(path: $0.url.path, bytes: $0.size) }
-                result += looseFiles(in: entry.url.path, total: deeper.total, children: deeper.children.map(\.size))
+                result += kids
+                if let total = firstLevel[folder] {
+                    result += looseFiles(in: folder, total: total, children: kids.map(\.bytes))
+                }
             }
         }
         return rank(result, limit: limit)
@@ -351,6 +401,7 @@ enum DiskMonitorReport {
     }
 
     static func rank(_ folders: [Folder], limit: Int) -> [Folder] {
-        Array(folders.sorted { $0.bytes > $1.bytes }.prefix(limit))
+        // Ties broken by path, so the same sizes always give the same list.
+        Array(folders.sorted { ($0.bytes, $1.path) > ($1.bytes, $0.path) }.prefix(limit))
     }
 }
