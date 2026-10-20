@@ -7,9 +7,11 @@
 # release: also builds a signed + notarized DMG, signs the zip for Sparkle,
 # appends it to scripts/appcast.xml, commits the version bump and appcast to
 # main, tags v<version>, creates the GitHub release with the DMG and zip, and
-# pushes the appcast to the gist installed apps poll (SUFeedURL). The build
-# number defaults to Info.plist's + 1. With dry_run, every file is produced
-# and uploaded as an artifact, but nothing is pushed or published.
+# pushes the appcast to the gist installed apps poll (SUFeedURL). Nothing to
+# remember: without a `version`, the release bumps Info.plist's version on
+# main per `bump`, and the build number is Info.plist's + 1. With dry_run,
+# every file is produced and uploaded as an artifact, but nothing is pushed
+# or published.
 #
 # Repository secrets:
 #   DEVELOPER_ID_P12_BASE64    base64 of the "Developer ID Application" .p12 (cert + private key)
@@ -25,9 +27,15 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version (CFBundleShortVersionString), e.g. 0.3.0. Required for a release; empty keeps Info.plist's."
+        description: "Version (CFBundleShortVersionString), e.g. 0.3.0. Empty: a release bumps Info.plist's per `bump`; a build keeps it."
         required: false
         type: string
+      bump:
+        description: "Release without a version: which part of Info.plist's version to bump (0.2.9 → patch 0.2.10, minor 0.3.0, major 1.0.0)."
+        required: false
+        type: choice
+        options: [patch, minor, major]
+        default: patch
       build:
         description: "Build number (CFBundleVersion), e.g. 22. Empty keeps Info.plist's (+1 for a release)."
         required: false
@@ -84,9 +92,6 @@ jobs:
           for name in "${need[@]}"; do
             if [ -z "${!name}" ]; then echo "::error::Missing repository secret $name"; fail=1; fi
           done
-          if [ "$RELEASE" = true ] && [ -z "$INPUT_VERSION" ]; then
-            echo "::error::A release needs a version"; fail=1
-          fi
           if [ "$PUBLISH" = true ] && [ "$GITHUB_REF" != refs/heads/main ]; then
             echo "::error::Releases are published from main (this run is on $GITHUB_REF); use dry_run to try another branch"; fail=1
           fi
@@ -128,24 +133,41 @@ jobs:
       - name: Set version
         env:
           INPUT_VERSION: ${{ inputs.version }}
+          INPUT_BUMP: ${{ inputs.bump }}
           INPUT_BUILD: ${{ inputs.build }}
         run: |
           PLIST=Burrow/Info.plist
-          if [ -n "$INPUT_VERSION" ]; then
-            [[ "$INPUT_VERSION" =~ ^[0-9]+(\.[0-9]+){1,2}$ ]] || { echo "::error::version must look like 1.2 or 1.2.3, got '$INPUT_VERSION'"; exit 1; }
-            /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $INPUT_VERSION" "$PLIST"
+          CURRENT_VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$PLIST")
+          CURRENT_BUILD=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$PLIST")
+
+          NEW_VERSION="$INPUT_VERSION"
+          if [ -z "$NEW_VERSION" ] && [ "$RELEASE" = true ]; then
+            [[ "$CURRENT_VERSION" =~ ^[0-9]+(\.[0-9]+){1,2}$ ]] || { echo "::error::Info.plist version '$CURRENT_VERSION' can't be bumped; pass a version"; exit 1; }
+            IFS=. read -r MAJOR MINOR PATCH <<< "$CURRENT_VERSION"
+            MINOR=${MINOR:-0}; PATCH=${PATCH:-0}
+            case "$INPUT_BUMP" in
+              major) NEW_VERSION="$((MAJOR + 1)).0.0" ;;
+              minor) NEW_VERSION="$MAJOR.$((MINOR + 1)).0" ;;
+              *)     NEW_VERSION="$MAJOR.$MINOR.$((PATCH + 1))" ;;
+            esac
           fi
-          if [ -n "$INPUT_BUILD" ]; then
-            [[ "$INPUT_BUILD" =~ ^[0-9]+$ ]] || { echo "::error::build must be a whole number, got '$INPUT_BUILD'"; exit 1; }
-            /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $INPUT_BUILD" "$PLIST"
-          elif [ "$RELEASE" = true ]; then
-            # Sparkle compares CFBundleVersion: every release must be strictly newer.
-            CURRENT=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$PLIST")
-            /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $((CURRENT + 1))" "$PLIST"
+          if [ -n "$NEW_VERSION" ]; then
+            [[ "$NEW_VERSION" =~ ^[0-9]+(\.[0-9]+){1,2}$ ]] || { echo "::error::version must look like 1.2 or 1.2.3, got '$NEW_VERSION'"; exit 1; }
+            /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $NEW_VERSION" "$PLIST"
           fi
-          if [ "$RELEASE" = true ] && git ls-remote --exit-code --tags origin "refs/tags/v$INPUT_VERSION" > /dev/null; then
-            if [ "$PUBLISH" = true ]; then echo "::error::Tag v$INPUT_VERSION already exists"; exit 1; fi
-            echo "::warning::Tag v$INPUT_VERSION already exists; a real release with this version would fail"
+
+          NEW_BUILD="$INPUT_BUILD"
+          # Sparkle compares CFBundleVersion: every release must be strictly newer.
+          if [ -z "$NEW_BUILD" ] && [ "$RELEASE" = true ]; then NEW_BUILD=$((CURRENT_BUILD + 1)); fi
+          if [ -n "$NEW_BUILD" ]; then
+            [[ "$NEW_BUILD" =~ ^[0-9]+$ ]] || { echo "::error::build must be a whole number, got '$NEW_BUILD'"; exit 1; }
+            /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $NEW_BUILD" "$PLIST"
+          fi
+          echo "Info.plist on $GITHUB_REF_NAME: $CURRENT_VERSION (build $CURRENT_BUILD) → ${NEW_VERSION:-$CURRENT_VERSION} (build ${NEW_BUILD:-$CURRENT_BUILD})"
+
+          if [ "$RELEASE" = true ] && git ls-remote --exit-code --tags origin "refs/tags/v$NEW_VERSION" > /dev/null; then
+            if [ "$PUBLISH" = true ]; then echo "::error::Tag v$NEW_VERSION already exists"; exit 1; fi
+            echo "::warning::Tag v$NEW_VERSION already exists; a real release with this version would fail"
           fi
 
       - name: Read version
