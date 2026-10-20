@@ -96,6 +96,37 @@ final class DiskMonitorTests: XCTestCase {
         XCTAssertThrowsError(try DiskMonitorSettings.parseChannel("http://guide.slack.com/archives/C0123ABCD"))
     }
 
+    func testParseToken() throws {
+        XCTAssertEqual(try DiskMonitorSettings.parseToken("  xoxb-123-456-AbC\n"), "xoxb-123-456-AbC")
+        XCTAssertEqual(try DiskMonitorSettings.parseToken("xoxp-1-2"), "xoxp-1-2")
+        // Half-pasted, other secrets, or text around the token.
+        for bad in ["", "xoxb-", "xoxb", "8f2c1e0d9a", "Bearer xoxb-1-2", "xoxb-1 2"] {
+            XCTAssertThrowsError(try DiskMonitorSettings.parseToken(bad), bad) { error in
+                XCTAssertEqual(error as? DiskMonitorSettings.ValidationError, .token)
+            }
+        }
+    }
+
+    func testTokenCommitNeverHappensWhileTyping() {
+        // "xoxb-1" is a valid token shape, so only a finished edit may save it.
+        XCTAssertEqual(DiskMonitorSettings.tokenCommit(draft: "xoxb-1", finished: false), .none)
+        XCTAssertEqual(DiskMonitorSettings.tokenCommit(draft: "xoxb-1", finished: true), .save("xoxb-1"))
+        XCTAssertEqual(DiskMonitorSettings.tokenCommit(draft: " xoxb-1-2\n", finished: true), .save("xoxb-1-2"))
+    }
+
+    func testTokenCommitBlankNeverTouchesTheStoredToken() {
+        for finished in [false, true] {
+            XCTAssertEqual(DiskMonitorSettings.tokenCommit(draft: "", finished: finished), .none)
+            XCTAssertEqual(DiskMonitorSettings.tokenCommit(draft: "  \n", finished: finished), .none)
+        }
+    }
+
+    func testTokenCommitRejectsBadTokenOnlyWhenFinished() {
+        XCTAssertEqual(DiskMonitorSettings.tokenCommit(draft: "xoxb-", finished: true), .invalid)
+        XCTAssertEqual(DiskMonitorSettings.tokenCommit(draft: "8f2c1e0d9a", finished: true), .invalid)
+        XCTAssertEqual(DiskMonitorSettings.tokenCommit(draft: "8f2c1e0d9a", finished: false), .none)
+    }
+
     func testApplyChannelLink() throws {
         var s = DiskMonitorSettings()
         try s.applyChannelLink(" https://guide.slack.com/archives/C0123ABCD ")
@@ -1006,25 +1037,6 @@ final class DiskMonitorTests: XCTestCase {
 
         XCTAssertEqual(spy.scans, 1)
         XCTAssertTrue(spy.posts.isEmpty)
-    }
-
-    @MainActor
-    func testBadChannelLinkStillSavesTheToken() throws {
-        let spy = Spy()
-        let (vm, cleanup) = try makeVM(spy, token: nil) { _ in }
-        defer { cleanup() }
-
-        let error = vm.saveSlack(token: "xoxb-new", channelLink: "C07MC01NSAH", mentions: "U01")
-        XCTAssertNotNil(error)
-        XCTAssertTrue(error?.hasSuffix("The bot token was saved.") == true)
-        vm.refreshSlackToken()
-        XCTAssertTrue(vm.hasSlackToken, "the token is kept even though the link was rejected")
-        XCTAssertEqual(vm.settings.slackChannel, "C0123ABCD", "an invalid link leaves the channel as it was")
-        XCTAssertEqual(vm.settings.slackMentions, [], "channel and tags are applied together")
-
-        XCTAssertNil(vm.saveSlack(token: "", channelLink: "https://guide.slack.com/archives/C07MC01NSAH", mentions: "U01"))
-        XCTAssertEqual(vm.settings.slackChannel, "C07MC01NSAH")
-        XCTAssertEqual(vm.settings.slackMentions, ["U01"])
     }
 
     @MainActor

@@ -347,29 +347,9 @@ final class DiskMonitorViewModel: ObservableObject {
         hasSlackToken = keychain.read(Self.tokenAccount) != nil
     }
 
-    /// The Slack section's Save. The token is stored first and on its own,
-    /// so a mistyped channel link or tag never discards a pasted token.
-    /// Channel and tags are applied together, only when both are valid.
-    /// Returns the error to show, or nil when everything was saved.
-    func saveSlack(token: String, channelLink: String, mentions: String) -> String? {
-        let tokenGiven = !token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        let tokenSaved = tokenGiven && saveSlackToken(token)
-        do {
-            let ids = try DiskMonitorSettings.parseMentions(mentions)
-            var updated = settings
-            try updated.applyChannelLink(channelLink)
-            updated.slackMentions = ids
-            settings = updated
-            return nil
-        } catch {
-            let saved = tokenSaved ? " The bot token was saved." : ""
-            return error.localizedDescription + saved
-        }
-    }
-
-    /// Stores a new token. Blank input is ignored — removing the token is
-    /// the explicit "Remove Token" button, never a side effect of Save.
-    /// Returns whether the Keychain write succeeded.
+    /// Stores a new token; true when it was written. Blank input is ignored —
+    /// removing the token is the explicit "Remove Token" button, never a side
+    /// effect of saving.
     @discardableResult
     func saveSlackToken(_ token: String) -> Bool {
         let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -378,10 +358,14 @@ final class DiskMonitorViewModel: ObservableObject {
             hasSlackToken = true
             slackStatus = "Token saved to the Keychain."
             return true
-        } else {
-            slackStatus = "Couldn't save the token to the Keychain."
-            return false
         }
+        slackStatus = "Couldn't save the token to the Keychain."
+        return false
+    }
+
+    /// Status line after the Slack channel or tags were saved.
+    func noteSlackSettingsSaved() {
+        slackStatus = "Slack settings saved."
     }
 
     func removeSlackToken() {
