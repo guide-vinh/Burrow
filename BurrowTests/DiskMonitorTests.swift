@@ -116,6 +116,26 @@ final class DiskMonitorTests: XCTestCase {
         }
     }
 
+    func testTokenCommitNeverHappensWhileTyping() {
+        // "xoxb-1" is a valid token shape, so only a finished edit may save it.
+        XCTAssertEqual(DiskMonitorSettings.tokenCommit(draft: "xoxb-1", finished: false), .none)
+        XCTAssertEqual(DiskMonitorSettings.tokenCommit(draft: "xoxb-1", finished: true), .save("xoxb-1"))
+        XCTAssertEqual(DiskMonitorSettings.tokenCommit(draft: " xoxb-1-2\n", finished: true), .save("xoxb-1-2"))
+    }
+
+    func testTokenCommitBlankNeverTouchesTheStoredToken() {
+        for finished in [false, true] {
+            XCTAssertEqual(DiskMonitorSettings.tokenCommit(draft: "", finished: finished), .none)
+            XCTAssertEqual(DiskMonitorSettings.tokenCommit(draft: "  \n", finished: finished), .none)
+        }
+    }
+
+    func testTokenCommitRejectsBadTokenOnlyWhenFinished() {
+        XCTAssertEqual(DiskMonitorSettings.tokenCommit(draft: "xoxb-", finished: true), .invalid)
+        XCTAssertEqual(DiskMonitorSettings.tokenCommit(draft: "8f2c1e0d9a", finished: true), .invalid)
+        XCTAssertEqual(DiskMonitorSettings.tokenCommit(draft: "8f2c1e0d9a", finished: false), .none)
+    }
+
     func testApplyChannelLink() throws {
         var s = DiskMonitorSettings()
         try s.applyChannelLink(" https://guide.slack.com/archives/C0123ABCD ")

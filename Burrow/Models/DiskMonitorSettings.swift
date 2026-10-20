@@ -158,6 +158,23 @@ struct DiskMonitorSettings: Codable, Equatable {
         return token
     }
 
+    /// What the token field does with its draft.
+    enum TokenCommit: Equatable {
+        case none
+        case save(String)
+        case invalid
+    }
+
+    /// Decides what to do with the token draft. Only a finished edit (Return,
+    /// focus left, Save, tab closed, app quitting) ever commits: a half-typed
+    /// "xoxb-1" already looks valid and must not replace a good token in the
+    /// Keychain. A blank draft never touches the stored token.
+    static func tokenCommit(draft: String, finished: Bool) -> TokenCommit {
+        guard finished, !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return .none }
+        guard let token = try? parseToken(draft) else { return .invalid }
+        return .save(token)
+    }
+
     /// Splits a comma-separated list of Slack IDs. Rejects @names, which
     /// Slack would print without notifying anyone. Empty means no tags.
     static func parseMentions(_ input: String) throws -> [String] {
