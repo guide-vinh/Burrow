@@ -349,6 +349,26 @@ final class DiskMonitorViewModel: ObservableObject {
 
     /// Stores a new token. Blank input is ignored — removing the token is
     /// the explicit "Remove Token" button, never a side effect of Save.
+    /// The Slack section's Save. The token is stored first and on its own,
+    /// so a mistyped channel link or tag never discards a pasted token.
+    /// Channel and tags are applied together, only when both are valid.
+    /// Returns the error to show, or nil when everything was saved.
+    func saveSlack(token: String, channelLink: String, mentions: String) -> String? {
+        let tokenGiven = !token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        if tokenGiven { saveSlackToken(token) }
+        do {
+            let ids = try DiskMonitorSettings.parseMentions(mentions)
+            var updated = settings
+            try updated.applyChannelLink(channelLink)
+            updated.slackMentions = ids
+            settings = updated
+            return nil
+        } catch {
+            let saved = tokenGiven && hasSlackToken ? " The bot token was saved." : ""
+            return error.localizedDescription + saved
+        }
+    }
+
     func saveSlackToken(_ token: String) {
         let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }

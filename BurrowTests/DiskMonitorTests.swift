@@ -1009,6 +1009,25 @@ final class DiskMonitorTests: XCTestCase {
     }
 
     @MainActor
+    func testBadChannelLinkStillSavesTheToken() throws {
+        let spy = Spy()
+        let (vm, cleanup) = try makeVM(spy, token: nil) { _ in }
+        defer { cleanup() }
+
+        let error = vm.saveSlack(token: "xoxb-new", channelLink: "C07MC01NSAH", mentions: "U01")
+        XCTAssertNotNil(error)
+        XCTAssertTrue(error?.hasSuffix("The bot token was saved.") == true)
+        vm.refreshSlackToken()
+        XCTAssertTrue(vm.hasSlackToken, "the token is kept even though the link was rejected")
+        XCTAssertEqual(vm.settings.slackChannel, "C0123ABCD", "an invalid link leaves the channel as it was")
+        XCTAssertEqual(vm.settings.slackMentions, [], "channel and tags are applied together")
+
+        XCTAssertNil(vm.saveSlack(token: "", channelLink: "https://guide.slack.com/archives/C07MC01NSAH", mentions: "U01"))
+        XCTAssertEqual(vm.settings.slackChannel, "C07MC01NSAH")
+        XCTAssertEqual(vm.settings.slackMentions, ["U01"])
+    }
+
+    @MainActor
     func testBlankTokenNeverDeletesTheStoredOne() throws {
         let spy = Spy()
         let (vm, cleanup) = try makeVM(spy) { _ in }

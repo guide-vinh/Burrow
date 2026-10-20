@@ -230,18 +230,10 @@ struct MonitoringSlackSection: View {
     private func trimmed(_ s: String) -> String { s.trimmingCharacters(in: .whitespacesAndNewlines) }
 
     private func saveSlack() {
-        do {
-            let mentions = try DiskMonitorSettings.parseMentions(mentionsDraft)
-            try vm.settings.applyChannelLink(channelDraft)
-            slackError = nil
-            vm.settings.slackMentions = mentions
-            channelDraft = vm.settings.slackChannelLink
-            // Blank input never deletes the stored token; that's Remove Token.
-            vm.saveSlackToken(tokenDraft)
-            tokenDraft = ""
-        } catch {
-            slackError = error.localizedDescription
-        }
+        // Blank token input never deletes the stored token; that's Remove Token.
+        slackError = vm.saveSlack(token: tokenDraft, channelLink: channelDraft, mentions: mentionsDraft)
+        tokenDraft = ""
+        if slackError == nil { channelDraft = vm.settings.slackChannelLink }
     }
 }
 
