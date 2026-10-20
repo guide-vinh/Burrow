@@ -251,15 +251,19 @@ final class DiskMonitorViewModel: ObservableObject {
 
         let alert = !alerting.isEmpty
         guard alert || !s.alertOnly else { return }
-        let wantTop = alert && s.includeTopFolders
-        let top = wantTop ? await topFolders(alerting: alerting, generation: gen) : nil
-        guard gen == generation else { return }
 
-        // Read Slack config now, after the slow part: a token removed or a
-        // channel cleared during the scan means no post.
+        // The report only goes to Slack. Without a token and a channel there is
+        // nothing to send, so don't walk the home folder either: it's slow, and
+        // without Full Disk Access it can raise macOS privacy prompts.
         let token = keychain.read(Self.tokenAccount)
         hasSlackToken = token != nil
         guard let token, !settings.slackChannel.isEmpty else { return }
+
+        let wantTop = alert && s.includeTopFolders
+        let top = wantTop ? await topFolders(alerting: alerting, generation: gen) : nil
+        guard gen == generation else { return }
+        // Token removed (Remove Token) or channel cleared during the scan: no post.
+        guard hasSlackToken, !settings.slackChannel.isEmpty else { return }
         let message = DiskMonitorReport.message(
             host: s.displayName, readings: readings, threshold: s.thresholdPercent,
             topFolders: top, includeTopSection: wantTop, mentions: settings.slackMentions

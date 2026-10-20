@@ -253,7 +253,7 @@ enum DiskMonitorReport {
             text += "\n```\n" + rows.joined(separator: "\n") + "\n```"
         }
         if top.limited {
-            text += "\n_App data folders (Mail, Messages, Photos, containers…) were skipped: Burrow doesn't have Full Disk Access._"
+            text += "\n_Burrow doesn't have Full Disk Access, so Desktop, Documents, Downloads, Music, Photos and app data (Mail, Messages, containers…) were skipped._"
         }
         return text
     }
@@ -279,6 +279,9 @@ enum DiskMonitorReport {
         "Safari", "Cookies",
         // Per-folder privacy prompts ("access files in your Documents folder").
         "Desktop", "Documents", "Downloads", "Photos Library.photoslibrary",
+        // Media libraries ("access Apple Music … and your media library"). The
+        // exact trigger inside ~/Music isn't known, so the whole folder is skipped.
+        "Music", "TV Library.tvlibrary",
     ]
 
     /// Skipped even with Full Disk Access, as diskmon does: File Provider
