@@ -12,6 +12,11 @@ struct CleanView: View {
             CleanHeader(vm: vm)
             Divider().background(Color.borderSubtle)
 
+            if let error = vm.lastError {
+                ErrorBanner(message: error, onDismiss: { vm.dismissError() })
+                Divider().background(Color.borderSubtle)
+            }
+
             if let summary = vm.previewBanner {
                 PreviewBanner(
                     summary: summary,

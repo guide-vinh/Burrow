@@ -54,7 +54,7 @@ struct UninstallDetail: View {
             Divider().background(Color.borderSubtle)
 
             if let error = vm.lastError {
-                errorBanner(error)
+                ErrorBanner(message: error, onDismiss: { vm.dismissError() })
                 Divider().background(Color.borderSubtle)
             }
 
@@ -74,33 +74,6 @@ struct UninstallDetail: View {
             footer
         }
         .background(Color.surfacePrimary)
-    }
-
-    /// Surfaces a failed (or partially failed) uninstall — e.g. an app
-    /// installed by an installer package that the current user can't move
-    /// to the Trash without admin rights. Without this, a failed apply
-    /// looks like a silent no-op: the app simply stays in the list.
-    private func errorBanner(_ message: String) -> some View {
-        HStack(spacing: Spacing.sm) {
-            Image(systemName: "exclamationmark.triangle")
-                .foregroundStyle(Color.destructive)
-            Text(message)
-                .font(.bodyS)
-                .foregroundStyle(Color.destructive)
-                .lineLimit(2)
-            Spacer(minLength: 0)
-            Button {
-                vm.dismissError()
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(Color.fgSecondary)
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(.horizontal, Spacing.xl)
-        .padding(.vertical, Spacing.sm)
-        .background(Color.Risk.highBG)
     }
 
     private func appHeader(for app: InstalledApp) -> some View {

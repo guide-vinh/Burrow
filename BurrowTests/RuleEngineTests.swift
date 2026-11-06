@@ -205,6 +205,54 @@ final class RuleEngineTests: XCTestCase {
         }
     }
 
+    func testApplyReportsFailedItemsAndKeepsGoing() async throws {
+        let urls = try makeThreeFiles()
+        let category = directoryContentsCategory(path: fixture.path)
+        let engine = RuleEngine(catalog: CleanCatalog(schemaVersion: 1, categories: [category]), log: freshLog())
+        // /System/Library is rejected by SafeFileOps.validate before any
+        // mutation (and a dry run touches nothing anyway).
+        let protectedItem = ScanItem(url: URL(fileURLWithPath: "/System/Library"), bytes: 999)
+        let result = ScanResult(
+            categoryId: "test.fixture",
+            items: [ScanItem(url: urls[0], bytes: 100), protectedItem, ScanItem(url: urls[1], bytes: 500)]
+        )
+
+        let outcome = try await engine.apply(result, dryRun: true)
+
+        XCTAssertEqual(outcome.succeededCount, 2, "items after the failure still run")
+        XCTAssertEqual(outcome.bytes, 600, "failed item's bytes are not counted")
+        XCTAssertEqual(outcome.failedItems, [protectedItem])
+        XCTAssertEqual(outcome.firstFailure, "Library is protected and can't be removed.")
+    }
+
+    func testApplyOutcomeIsCleanWhenEverythingSucceeds() async throws {
+        _ = try makeThreeFiles()
+        let category = directoryContentsCategory(path: fixture.path)
+        let engine = RuleEngine(catalog: CleanCatalog(schemaVersion: 1, categories: [category]), log: freshLog())
+        let result = await engine.scan(category)
+
+        let outcome = try await engine.apply(result, dryRun: true)
+
+        XCTAssertEqual(outcome.succeededCount, 3)
+        XCTAssertEqual(outcome.bytes, result.totalBytes)
+        XCTAssertTrue(outcome.failedItems.isEmpty)
+        XCTAssertNil(outcome.firstFailure)
+    }
+
+    func testApplyTreatsVanishedItemAsNeitherSuccessNorFailure() async throws {
+        let category = directoryContentsCategory(path: fixture.path)
+        let log = freshLog()
+        let engine = RuleEngine(catalog: CleanCatalog(schemaVersion: 1, categories: [category]), log: log)
+        let gone = fixture.appendingPathComponent("gone.bin")
+        let result = ScanResult(categoryId: "test.fixture", items: [ScanItem(url: gone, bytes: 10)])
+
+        let outcome = try await engine.apply(result, dryRun: false)
+
+        XCTAssertEqual(outcome, RuleEngine.ApplyOutcome(), "empty outcome: no bytes, count, failures or reason")
+        let entries = try await log.readAll()
+        XCTAssertTrue(entries.isEmpty, "nothing was acted on, so nothing is audited")
+    }
+
     func testApplyTrashesFilesAndLogsSixTotalEntries() async throws {
         let urls = try makeThreeFiles()
         let category = directoryContentsCategory(path: fixture.path)
