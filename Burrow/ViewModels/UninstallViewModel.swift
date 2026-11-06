@@ -54,12 +54,13 @@ final class UninstallViewModel: ObservableObject {
     // MARK: - Discovery
 
     /// Walks /Applications etc. via `AppScanner` and stores the result
-    /// in `apps`. Toggles `isLoadingApps` for the duration.
+    /// in `apps`, minus Burrow itself. Toggles `isLoadingApps` for the
+    /// duration.
     func loadApps() async {
         isLoadingApps = true
         defer { isLoadingApps = false }
 
-        let discovered = await discoverApps()
+        let discovered = await discoverApps().filter { !$0.isBurrow }
         self.apps = discovered
         // NOTE: don't clear `lastError` here — loadApps is a refresh
         // (called on init AND post-uninstall) so an in-flight uninstall

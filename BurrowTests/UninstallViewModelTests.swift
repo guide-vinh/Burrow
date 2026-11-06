@@ -18,6 +18,34 @@ final class UninstallViewModelTests: XCTestCase {
         try super.tearDownWithError()
     }
 
+    // MARK: - Self-protection
+
+    func testLoadAppsHidesBurrow() async {
+        let other = makeApp(bundleId: "com.example.other", name: "Other")
+        let vm = UninstallViewModel(
+            discoverApps: { [
+                self.makeApp(bundleId: "fun.burrow.app", name: "Burrow"),
+                self.makeApp(bundleId: "fun.burrow.app.dev", name: "Burrow Dev"),
+                other,
+            ] },
+            findLeftovers: { _ in [] }
+        )
+
+        await vm.loadApps()
+
+        XCTAssertEqual(vm.apps.map(\.bundleId), [other.bundleId])
+    }
+
+    func testLoadAppsHidesRunningBundleByPath() async {
+        // A rebranded/odd build id is still this app if it's the running bundle.
+        let running = makeApp(bundleId: "com.example.renamed", name: "Burrow", bundleURL: Bundle.main.bundleURL)
+        let vm = UninstallViewModel(discoverApps: { [running] }, findLeftovers: { _ in [] })
+
+        await vm.loadApps()
+
+        XCTAssertTrue(vm.apps.isEmpty)
+    }
+
     // MARK: - Helpers
 
     private func makeApp(
