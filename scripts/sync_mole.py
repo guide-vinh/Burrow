@@ -3,10 +3,15 @@
 sync_mole.py — diff upstream tw93/Mole cleanup paths against Burrow's curated
 JSON catalogs, as a REVIEW AID. It never writes the catalogs.
 
-Mole encodes paths in bash arrays across lib/clean/*.sh and lib/uninstall/*.sh,
-with no titles/groups/icons/risk/bundle-ids. Burrow's JSON is hand-curated with
-that metadata. So this tool only surfaces which upstream paths are NEW (candidates
-to add) or Burrow-only, grouped by source file — a human/Claude does the merge.
+Mole encodes paths in shell across lib/clean/*.sh and lib/uninstall/*.sh, with no
+titles/groups/icons/risk/bundle-ids. Burrow's JSON is hand-curated with that
+metadata. So this tool only surfaces what still needs a decision — a human/Claude
+does the merge.
+
+For Clean it reads the literal targets of safe_clean/safe_clean_guarded, the calls
+that actually delete, and sorts each into covered (a Burrow rule reaches it),
+rejected or deferred (scripts/mole_review.txt) or unreviewed. Targets built from
+shell variables can't be read this way and are not counted.
 
 Zero dependencies (urllib only). The Mole commit is pinned in scripts/mole.lock.
 
@@ -17,6 +22,7 @@ Usage:
   scripts/sync_mole.py --self-test     # offline unit checks for the extractor
 """
 import argparse
+import fnmatch
 import json
 import os
 import re
@@ -27,10 +33,13 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LOCK = os.path.join(REPO_ROOT, "scripts", "mole.lock")
 CLEAN_JSON = os.path.join(REPO_ROOT, "Burrow", "Resources", "CleanRules.json")
 LEFTOVERS_JSON = os.path.join(REPO_ROOT, "Burrow", "Resources", "AppLeftovers.json")
+REVIEW = os.path.join(REPO_ROOT, "scripts", "mole_review.txt")
 
+# Used only if the GitHub listing fails; list_files() normally finds new files.
 CLEAN_FILES = ["app_caches.sh", "apps.sh", "brew.sh", "caches.sh", "dev.sh",
-               "hints.sh", "project.sh", "purge_shared.sh", "system.sh", "user.sh"]
-UNINSTALL_FILES = ["batch.sh", "brew.sh", "steam.sh"]
+               "hints.sh", "project.sh", "purge_shared.sh", "snapshots.sh", "system.sh",
+               "user.sh"]
+UNINSTALL_FILES = ["batch.sh", "brew.sh", "config_refs.sh", "review.sh", "steam.sh"]
 
 # Quoted string literal (double or single quotes).
 QUOTED = re.compile(r'"([^"]*)"' + r"|'([^']*)'")
@@ -38,6 +47,10 @@ QUOTED = re.compile(r'"([^"]*)"' + r"|'([^']*)'")
 # recognizable macOS cache/support segment.
 PATH_START = re.compile(r'^(~|\$\{?HOME\}?|/Library|/Users|/private|/var|/tmp|/Applications|/System|/opt|/usr/local)')
 PATH_SEGMENT = re.compile(r'/(Caches|Application Support|Logs|Preferences|Containers|Saved Application State|WebKit|HTTPStorages)/')
+# A safe_clean call: its first argument is the target, the last the description.
+CLEAN_CALL = re.compile(r'^\s*safe_clean(?:_guarded)?\s+(.+)$')
+# That target, either "quoted"/suffix or bare with backslash-escaped spaces.
+CLEAN_TARGET = re.compile(r'^"((?:~|\$HOME|\$\{HOME\})[^"]*)"(\S*)|^((?:~|\$HOME|\$\{HOME\})(?:\\ |[^\s"])+)')
 
 
 def read_lock_sha():
@@ -55,6 +68,17 @@ def fetch(sha, subdir, name):
     url = f"https://raw.githubusercontent.com/tw93/Mole/{sha}/lib/{subdir}/{name}"
     with urllib.request.urlopen(url, timeout=15) as r:  # noqa: S310 (trusted host)
         return r.read().decode("utf-8", errors="replace")
+
+
+def list_files(sha, subdir, fallback):
+    """The .sh files in lib/<subdir>, so a file added upstream can't be missed."""
+    url = f"https://api.github.com/repos/tw93/Mole/contents/lib/{subdir}?ref={sha}"
+    try:
+        with urllib.request.urlopen(url, timeout=15) as r:  # noqa: S310 (trusted host)
+            return sorted(e["name"] for e in json.load(r) if e["name"].endswith(".sh"))
+    except Exception as e:  # noqa: BLE001
+        print(f"  ! can't list lib/{subdir} ({e}); using the built-in file list", file=sys.stderr)
+        return fallback
 
 
 def normalize(token):
@@ -95,6 +119,73 @@ def extract_paths(text):
         if norm not in out or conf == "ok":
             out[norm] = conf
     return out
+
+
+def clean_target(raw):
+    """Canonicalize a catalog or safe_clean path: `~` home, no trailing `/*`."""
+    t = raw.replace("\\ ", " ")
+    t = re.sub(r'^\$\{?HOME\}?', '~', t).rstrip("/")
+    return re.sub(r'/\*+$', '', t).rstrip("/")
+
+
+def extract_clean_targets(text):
+    """Literal paths Mole deletes via safe_clean. Variables other than HOME are
+    skipped: they only resolve at runtime."""
+    out = set()
+    for line in text.splitlines():
+        call = CLEAN_CALL.match(line)
+        target = CLEAN_TARGET.match(call.group(1)) if call else None
+        if not target:
+            continue
+        raw = target.group(3) or target.group(1) + target.group(2)
+        path = clean_target(raw)
+        if "$" not in path:
+            out.add(path)
+    return out
+
+
+def is_covered(target, rules):
+    """True if a Burrow rule reaches `target`: same path, a parent of it, or a
+    glob matching it."""
+    base = re.sub(r'\*.*$', '', target).rstrip("/")
+    for rule in rules:
+        if target == rule or base == rule or fnmatch.fnmatch(target, rule):
+            return True
+        if target.startswith(rule + "/") or base.startswith(rule + "/"):
+            return True
+    return False
+
+
+def read_review(path=REVIEW):
+    """[(decision, pattern, reason)] from mole_review.txt, where each line is
+    `reject|defer <TAB> pattern <TAB> reason`."""
+    entries = []
+    try:
+        with open(path) as f:
+            for number, line in enumerate(f, 1):
+                line = line.rstrip("\n")
+                if not line.strip() or line.startswith("#"):
+                    continue
+                parts = line.split("\t")
+                if len(parts) != 3 or parts[0] not in ("reject", "defer"):
+                    sys.exit(f"{path}:{number}: expected reject|defer<TAB>pattern<TAB>reason")
+                entries.append(tuple(parts))
+    except FileNotFoundError:
+        pass
+    return entries
+
+
+def classify(targets, rules, review):
+    """Sort targets into covered/reject/defer/unreviewed. A rule wins over a
+    review line, so a path added to the catalog stops counting as deferred."""
+    groups = {"covered": [], "reject": [], "defer": [], "unreviewed": []}
+    for target in sorted(targets):
+        if is_covered(target, rules):
+            groups["covered"].append(target)
+            continue
+        decision = next((d for d, pattern, _ in review if fnmatch.fnmatch(target, pattern)), None)
+        groups[decision or "unreviewed"].append(target)
+    return groups
 
 
 def burrow_clean_paths():
@@ -151,18 +242,32 @@ def report(title, files_paths, burrow_paths, stubs):
           f"(Burrow-specific or dropped upstream).")
 
 
+def report_clean(targets, stubs):
+    groups = classify(targets, {clean_target(p) for p in burrow_clean_paths()}, read_review())
+    title = "CLEAN catalog (lib/clean → CleanRules.json)"
+    print(f"\n{'=' * 70}\n{title}\n{'=' * 70}")
+    for target in groups["unreviewed"]:
+        print(f"  + {target}")
+        if stubs:
+            kind = "glob" if "*" in target else "directoryContents"
+            print(f'    {{ "kind": "{kind}", "path": "{target}" }},')
+    print(f"\n{len(targets)} literal Mole target(s): {len(groups['covered'])} covered, "
+          f"{len(groups['reject'])} rejected, {len(groups['defer'])} deferred, "
+          f"{len(groups['unreviewed'])} unreviewed.")
+
+
 def run(sha, stubs):
     print(f"Syncing against tw93/Mole @ {sha}")
-    clean_files = {}
-    for name in CLEAN_FILES:
+    targets = set()
+    for name in list_files(sha, "clean", CLEAN_FILES):
         try:
-            clean_files[name] = extract_paths(fetch(sha, "clean", name))
+            targets |= extract_clean_targets(fetch(sha, "clean", name))
         except Exception as e:  # noqa: BLE001
             print(f"  ! skip clean/{name}: {e}", file=sys.stderr)
-    report("CLEAN catalog (lib/clean → CleanRules.json)", clean_files, burrow_clean_paths(), stubs)
+    report_clean(targets, stubs)
 
     un_files = {}
-    for name in UNINSTALL_FILES:
+    for name in list_files(sha, "uninstall", UNINSTALL_FILES):
         try:
             un_files[name] = extract_paths(fetch(sha, "uninstall", name))
         except Exception as e:  # noqa: BLE001
@@ -197,6 +302,34 @@ def self_test():
     assert normalize("not/a/path") is None
     assert normalize("") is None
     print("self-test OK:", len(paths), "paths extracted")
+
+    targets = extract_clean_targets(r'''
+        safe_clean ~/Library/Caches/com.foo.bar/* "Foo cache"
+        safe_clean ~/Library/Application\ Support/Baz/GPUCache/* "Baz GPU"
+        safe_clean "$HOME/Library/Caches/pnpm"/metadata*/* "pnpm metadata cache"
+        safe_clean_guarded "$HOME/.cache/guarded"/* "Guarded"
+        safe_clean "$_container/iCache"/* "runtime path"
+        safe_clean "$@"
+        # safe_clean ~/commented/out "not a call"
+    ''')
+    assert targets == {
+        "~/Library/Caches/com.foo.bar",
+        "~/Library/Application Support/Baz/GPUCache",
+        "~/Library/Caches/pnpm/metadata*",
+        "~/.cache/guarded",
+    }, targets
+
+    rules = {"~/Library/Caches/Google", "~/Library/App/*/Cache"}
+    assert is_covered("~/Library/Caches/Google/Chrome", rules), "parent rule"
+    assert is_covered("~/Library/App/Default/Cache", rules), "glob rule"
+    assert not is_covered("~/Library/Caches/GoogleEarth", rules), "prefix is not a parent"
+
+    review = [("reject", "~/Library/Caches/com.apple.*", "x"), ("defer", "~/.a", "y")]
+    groups = classify({"~/.a", "~/.b", "~/Library/Caches/com.apple.mail", "~/Library/Caches/Google/X"},
+                      rules, review)
+    assert groups == {"covered": ["~/Library/Caches/Google/X"], "reject": ["~/Library/Caches/com.apple.mail"],
+                      "defer": ["~/.a"], "unreviewed": ["~/.b"]}, groups
+    print("self-test OK: clean targets, coverage and review classified")
 
 
 def main():

@@ -59,6 +59,7 @@ scripts/       release.sh, appcast.xml, ExportOptions.plist, icon generator
    `ScanItem`s (url + bytes) via `PathResolver`, filtered by the `SafeFileOps` deny-list.
 4. UI groups categories by `CategoryGroup` → `CategoryGroupSection` → `CategoryRow`.
 5. Apply: `RuleEngine.apply(_:dryRun:)` → `SafeFileOps.trash` (move to Trash) → `OperationLog`.
+   `CleanViewModel` skips a category while its `requiresAppQuit` app is open.
 
 **Rule kinds** (`CleanRule.swift`): `directoryContents`, `glob`, `command`.
 ⚠️ `command` is **not executed** (Phase 1 — `RuleEngine.resolveRule` skips it). Anything
@@ -97,6 +98,8 @@ Pattern set by `NodeModulesScanner` / `FlutterProjectScanner`:
   always behind a confirmation alert).
 - **Burrow never removes itself.** `validate(_:)` refuses the running bundle, anything inside
   it, and any folder containing it; `UninstallViewModel` hides Burrow (`InstalledApp.isBurrow`).
+- **iCloud Drive's own folders are off limits.** `validate(_:)` refuses `Mobile Documents`, its
+  containers, a container's `Documents` and `~/Library`; trashing one wipes it on every device.
 - Every action (including dry-runs) is appended to `OperationLog`.
 - `olderThanDays` filters on mtime; files whose age can't be read are conservatively skipped.
 

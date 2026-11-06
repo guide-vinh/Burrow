@@ -1,0 +1,145 @@
+# Decisions on Mole cleanup targets Burrow doesn't cover, read by sync_mole.py.
+# Format: reject|defer <TAB> pattern <TAB> reason. `*` also matches `/`.
+#   reject  reviewed, Burrow should not clean this.
+#   defer   not reviewed or not verified yet; still a gap against Mole.
+# Adding a catalog rule for a path takes precedence over its line here.
+reject	~/Library/Caches/com.apple.*	Apple system service or app; regeneration not guaranteed and Burrow cannot stop it first
+reject	~/Library/Containers/com.apple.*	Apple sandbox data; same reason as com.apple caches
+reject	~/Library/Containers/com.microsoft.*	Office tmp and caches can hold AutoRecover state
+reject	~/Library/Messages/*	Messages data
+reject	~/Library/Suggestions	System Siri suggestions store
+reject	~/Library/IdentityCaches	System identity store
+reject	~/Library/Saved Application State	Window restore state; users notice it disappear
+reject	~/Library/Preferences/*	Preferences are not cache
+reject	~/Library/Application Support/AddressBook/*	Contacts data
+reject	~/.zcompdump*	Shell startup file; tiny, not worth a row
+reject	~/.lesshst	User history
+reject	~/.viminfo.tmp	User history
+reject	~/.wget-hsts	Security state for wget; tiny
+reject	~/.jenkins/workspace/*	Build outputs of a CI workspace, not a cache
+reject	~/.local/share/containers/*	Podman runtime storage; may be in use
+reject	~/Library/Caches/com.parallels.*	In AppLeftovers ignoreApps; needs its own tooling
+reject	~/Library/Caches/com.vmware.fusion	In AppLeftovers ignoreApps; needs its own tooling
+reject	~/Library/Caches/com.anydesk.*	Remote access tool; a session may be live
+reject	~/Library/Caches/com.teamviewer.*	Remote access tool; a session may be live
+reject	~/Library/Caches/com.sunlogin.*	Remote access tool; a session may be live
+reject	~/Library/Caches/com.todesk.*	Remote access tool; a session may be live
+defer	~/.cache/kaku	Niche app, not reviewed yet
+defer	~/.cacher/logs	Niche app, not reviewed yet
+defer	~/.kite/logs	Niche app, not reviewed yet
+defer	~/.lunarclient/game-cache	Game data; check nothing is needed to launch first
+defer	~/.lunarclient/launcher-cache	Game data; check nothing is needed to launch first
+defer	~/.lunarclient/logs	Game data; check nothing is needed to launch first
+defer	~/.lunarclient/offline/*/logs	Game data; check nothing is needed to launch first
+defer	~/.lunarclient/offline/files/*/logs	Game data; check nothing is needed to launch first
+defer	~/.sonar	Niche app, not reviewed yet
+defer	~/Library/Application Support/Google/GoogleUpdater/*.old	Niche app, not reviewed yet
+defer	~/Library/Application Support/Google/GoogleUpdater/crx_cache	Niche app, not reviewed yet
+defer	~/Library/Application Support/PCSX2/cache	Game data; check nothing is needed to launch first
+defer	~/Library/Application Support/QQBrowser3/*/Code Cache	Niche app, not reviewed yet
+defer	~/Library/Application Support/QQBrowser3/*/GPUCache	Niche app, not reviewed yet
+defer	~/Library/Application Support/QQBrowser3/Crashpad/completed	Niche app, not reviewed yet
+defer	~/Library/Application Support/QQBrowser3/GrShaderCache	Niche app, not reviewed yet
+defer	~/Library/Application Support/QQBrowser3/GraphiteDawnCache	Niche app, not reviewed yet
+defer	~/Library/Application Support/QQBrowser3/ShaderCache	Niche app, not reviewed yet
+defer	~/Library/Application Support/QQBrowser3/component_crx_cache	Niche app, not reviewed yet
+defer	~/Library/Application Support/Quark/Cache/videoCache	Niche app, not reviewed yet
+defer	~/Library/Application Support/Steam/appcache	Game data; check nothing is needed to launch first
+defer	~/Library/Application Support/Steam/depotcache	Game data; check nothing is needed to launch first
+defer	~/Library/Application Support/Steam/steamapps/shadercache	Game data; check nothing is needed to launch first
+defer	~/Library/Application Support/WeType/DictUpdate	Niche app, not reviewed yet
+defer	~/Library/Application Support/WeType/com.onevcat.Kingfisher.ImageCache.WeType	Niche app, not reviewed yet
+defer	~/Library/Application Support/com.wondershare.Installer	Niche app, not reviewed yet
+defer	~/Library/Application Support/iDingTalk/holmeslogs	Chat or mail app; check media and messages can be downloaded again first
+defer	~/Library/Application Support/iDingTalk/log	Chat or mail app; check media and messages can be downloaded again first
+defer	~/Library/Application Support/minecraft/crash-reports	Game data; check nothing is needed to launch first
+defer	~/Library/Application Support/minecraft/logs	Game data; check nothing is needed to launch first
+defer	~/Library/Application Support/minecraft/webcache	Game data; check nothing is needed to launch first
+defer	~/Library/Application Support/minecraft/webcache2	Game data; check nothing is needed to launch first
+defer	~/Library/Application Support/rpcs3/logs	Game data; check nothing is needed to launch first
+defer	~/Library/Application Support/spacedrive/thumbnails	Niche app, not reviewed yet
+defer	~/Library/Application Support/stremio/stremio-server/stremio-cache	Niche app, not reviewed yet
+defer	~/Library/Caches/GeoServices	Niche app, not reviewed yet
+defer	~/Library/Caches/KSCrash	Niche app, not reviewed yet
+defer	~/Library/Caches/Quick Look	Niche app, not reviewed yet
+defer	~/Library/Caches/SentryCrash	Niche app, not reviewed yet
+defer	~/Library/Caches/SentryCrash/Warp	Niche app, not reviewed yet
+defer	~/Library/Caches/com.adobe.PremierePro.*	Pro app; its cache may be expensive to rebuild
+defer	~/Library/Caches/com.airmail.*	Chat or mail app; check media and messages can be downloaded again first
+defer	~/Library/Caches/com.alibaba.AliLang.osx	Chat or mail app; check media and messages can be downloaded again first
+defer	~/Library/Caches/com.alibaba.teambitiondisk	Chat or mail app; check media and messages can be downloaded again first
+defer	~/Library/Caches/com.any.do.*	Notes or tasks app; check the cache holds no unsynced data first
+defer	~/Library/Caches/com.baidu.netdisk	Niche app, not reviewed yet
+defer	~/Library/Caches/com.bear-writer.*	Notes or tasks app; check the cache holds no unsynced data first
+defer	~/Library/Caches/com.blackmagic-design.DaVinciResolve	Pro app; its cache may be expensive to rebuild
+defer	~/Library/Caches/com.bob-build.Bob	Niche app, not reviewed yet
+defer	~/Library/Caches/com.box.desktop	Niche app, not reviewed yet
+defer	~/Library/Caches/com.charlessoft.pacifist	Niche app, not reviewed yet
+defer	~/Library/Caches/com.crashlytics.data	Niche app, not reviewed yet
+defer	~/Library/Caches/com.douyu.*	Niche app, not reviewed yet
+defer	~/Library/Caches/com.downie.Downie-*	Niche app, not reviewed yet
+defer	~/Library/Caches/com.ea.*	Game data; check nothing is needed to launch first
+defer	~/Library/Caches/com.eggerapps.Sequel-Pro	Niche app, not reviewed yet
+defer	~/Library/Caches/com.eudic.*	Niche app, not reviewed yet
+defer	~/Library/Caches/com.evernote.*	Notes or tasks app; check the cache holds no unsynced data first
+defer	~/Library/Caches/com.feishu.*	Chat or mail app; check media and messages can be downloaded again first
+defer	~/Library/Caches/com.filo.client	Niche app, not reviewed yet
+defer	~/Library/Caches/com.flomoapp.mac	Notes or tasks app; check the cache holds no unsynced data first
+defer	~/Library/Caches/com.folx.*	Niche app, not reviewed yet
+defer	~/Library/Caches/com.getpaw.Paw	Niche app, not reviewed yet
+defer	~/Library/Caches/com.huya.*	Niche app, not reviewed yet
+defer	~/Library/Caches/com.iqiyi.player	Niche app, not reviewed yet
+defer	~/Library/Caches/com.kingsoft.wpsoffice.mac	Pro app; its cache may be expensive to rebuild
+defer	~/Library/Caches/com.klee.desktop	Chat or mail app; check media and messages can be downloaded again first
+defer	~/Library/Caches/com.kugou.mac	Niche app, not reviewed yet
+defer	~/Library/Caches/com.kuwo.mac	Niche app, not reviewed yet
+defer	~/Library/Caches/com.logseq.*	Notes or tasks app; check the cache holds no unsynced data first
+defer	~/Library/Caches/com.maxon.cinema4d	Pro app; its cache may be expensive to rebuild
+defer	~/Library/Caches/com.microsoft.Excel	Pro app; its cache may be expensive to rebuild
+defer	~/Library/Caches/com.microsoft.Outlook	Pro app; its cache may be expensive to rebuild
+defer	~/Library/Caches/com.microsoft.Powerpoint	Pro app; its cache may be expensive to rebuild
+defer	~/Library/Caches/com.microsoft.Word	Pro app; its cache may be expensive to rebuild
+defer	~/Library/Caches/com.netease.163music	Niche app, not reviewed yet
+defer	~/Library/Caches/com.readdle.smartemail-Mac	Chat or mail app; check media and messages can be downloaded again first
+defer	~/Library/Caches/com.reincubate.camo	Niche app, not reviewed yet
+defer	~/Library/Caches/com.riotgames.*	Game data; check nothing is needed to launch first
+defer	~/Library/Caches/com.runjuu.Input-Source-Pro	Niche app, not reviewed yet
+defer	~/Library/Caches/com.sketchup.*	Pro app; its cache may be expensive to rebuild
+defer	~/Library/Caches/com.skype.skype	Chat or mail app; check media and messages can be downloaded again first
+defer	~/Library/Caches/com.tencent.QQBrowser3	Chat or mail app; check media and messages can be downloaded again first
+defer	~/Library/Caches/com.tencent.QQMusic	Chat or mail app; check media and messages can be downloaded again first
+defer	~/Library/Caches/com.tencent.QQMusicMac	Chat or mail app; check media and messages can be downloaded again first
+defer	~/Library/Caches/com.tencent.WeWorkMac	Chat or mail app; check media and messages can be downloaded again first
+defer	~/Library/Caches/com.tencent.meeting	Chat or mail app; check media and messages can be downloaded again first
+defer	~/Library/Caches/com.tencent.qq	Chat or mail app; check media and messages can be downloaded again first
+defer	~/Library/Caches/com.tencent.tenvideo	Chat or mail app; check media and messages can be downloaded again first
+defer	~/Library/Caches/com.tencent.xinWeChat	Chat or mail app; check media and messages can be downloaded again first
+defer	~/Library/Caches/com.todoist.mac.Todoist	Notes or tasks app; check the cache holds no unsynced data first
+defer	~/Library/Caches/com.tw93.MiaoYan	Notes or tasks app; check the cache holds no unsynced data first
+defer	~/Library/Caches/com.utmapp.UTM	Niche app, not reviewed yet
+defer	~/Library/Caches/com.xnipapp.xnip	Niche app, not reviewed yet
+defer	~/Library/Caches/com.yinxiang.*	Notes or tasks app; check the cache holds no unsynced data first
+defer	~/Library/Caches/com.youdao.YoudaoDict	Niche app, not reviewed yet
+defer	~/Library/Caches/dd.work.exclusive4aliding	Chat or mail app; check media and messages can be downloaded again first
+defer	~/Library/Caches/klee_desktop	Chat or mail app; check media and messages can be downloaded again first
+defer	~/Library/Caches/macos-wakatime.WakaTime	Niche app, not reviewed yet
+defer	~/Library/Caches/md.obsidian	Notes or tasks app; check the cache holds no unsynced data first
+defer	~/Library/Caches/net.pcsx2.PCSX2	Game data; check nothing is needed to launch first
+defer	~/Library/Caches/net.rpcs3.rpcs3	Game data; check nothing is needed to launch first
+defer	~/Library/Caches/net.telestream.screenflow10	Pro app; its cache may be expensive to rebuild
+defer	~/Library/Caches/net.xmac.aria2gui	Niche app, not reviewed yet
+defer	~/Library/Caches/notion.id	Notes or tasks app; check the cache holds no unsynced data first
+defer	~/Library/Caches/org.mozilla.thunderbird	Chat or mail app; check media and messages can be downloaded again first
+defer	~/Library/Caches/redis-desktop-manager	Niche app, not reviewed yet
+defer	~/Library/Caches/smart.stremio*	Niche app, not reviewed yet
+defer	~/Library/Caches/tv.danmaku.bili	Niche app, not reviewed yet
+defer	~/Library/Caches/ws.stash.app.mac	Niche app, not reviewed yet
+defer	~/Library/Containers/com.ideasoncanvas.mindnode/Data/Library/Caches	Notes or tasks app; check the cache holds no unsynced data first
+defer	~/Library/Containers/com.ranchero.NetNewsWire-Evergreen/Data/Library/Caches	Niche app, not reviewed yet
+defer	~/Library/Containers/com.tencent.QQMusicMac/Data/Library/Caches	Chat or mail app; check media and messages can be downloaded again first
+defer	~/Library/Containers/com.utmapp.UTM/Data/Library/Caches	Niche app, not reviewed yet
+defer	~/Library/Containers/com.utmapp.UTM/Data/tmp	Niche app, not reviewed yet
+defer	~/Library/Containers/com.wuziqi.SenPlayer/Data/tmp/videoCache	Niche app, not reviewed yet
+defer	~/Library/Containers/is.follow/Data/Library/Application Support/Folo/Cache/Cache_Data	Niche app, not reviewed yet
+defer	~/Movies/CacheClip	Pro app; its cache may be expensive to rebuild
+defer	~/VirtualBox VMs/.cache	Niche app, not reviewed yet

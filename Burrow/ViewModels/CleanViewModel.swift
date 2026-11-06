@@ -46,20 +46,27 @@ final class CleanViewModel: ObservableObject {
 
     private var engine: RuleEngine?
     private let log: OperationLog
+    private let isAppRunning: (String) -> Bool
     private var bannerDismissTask: Task<Void, Never>?
 
     // MARK: - Init
 
     /// Production initializer. Catalog is loaded asynchronously by
     /// `loadCatalog()` (typically from `View.task { await vm.loadCatalog() }`).
-    init(log: OperationLog = .shared) {
+    init(log: OperationLog = .shared, isAppRunning: @escaping (String) -> Bool = CleanViewModel.isRunning) {
         self.log = log
+        self.isAppRunning = isAppRunning
     }
 
     /// Test convenience: pre-built catalog, no Bundle.main lookup. Defaults
     /// the selection to every category whose `defaultEnabled == true`.
-    init(catalog: CleanCatalog, log: OperationLog = .shared) {
+    init(
+        catalog: CleanCatalog,
+        log: OperationLog = .shared,
+        isAppRunning: @escaping (String) -> Bool = CleanViewModel.isRunning
+    ) {
         self.log = log
+        self.isAppRunning = isAppRunning
         self.categories = catalog.categories
         self.engine = RuleEngine(catalog: catalog, log: log)
         self.selectedCategoryIds = Set(catalog.categories.filter { $0.defaultEnabled }.map(\.id))
@@ -159,6 +166,8 @@ final class CleanViewModel: ObservableObject {
     /// Trashes (or dry-runs) every ScanResult belonging to a selected
     /// category. Per-category errors are recorded in `lastError` and
     /// the loop continues — one bad category never aborts the batch.
+    /// Categories whose app is open are skipped and stay selected, so the
+    /// user can quit it and clean again.
     /// On a successful real (non-dry) apply, removes ONLY the
     /// categories that were actually applied from `scanResults` and
     /// `selectedCategoryIds`. (Previously this wiped the entire
@@ -179,8 +188,9 @@ final class CleanViewModel: ObservableObject {
         var totalBytes: Int64 = 0
         var totalItems = 0
         var appliedIds: Set<String> = []
+        let blockedIds = Set(categoriesBlockedByRunningApps.map(\.id))
 
-        for id in selectedCategoryIds {
+        for id in selectedCategoryIds.subtracting(blockedIds) {
             guard let result = scanResults[id] else { continue }
 
             do {
@@ -213,6 +223,22 @@ final class CleanViewModel: ObservableObject {
         } else if dryRun && !encounteredError {
             previewBanner = PreviewSummary(items: totalItems, bytes: totalBytes)
             scheduleBannerDismiss()
+        }
+    }
+
+    /// Whether an app with `bundleId` is open right now.
+    nonisolated static func isRunning(_ bundleId: String) -> Bool {
+        !NSRunningApplication.runningApplications(withBundleIdentifier: bundleId).isEmpty
+    }
+
+    /// Selected, scanned categories whose `requiresAppQuit` app is open.
+    /// Clearing a cache under a running app can break it or lose its state.
+    private var categoriesBlockedByRunningApps: [CleanCategory] {
+        categories.filter { category in
+            guard let bundleId = category.requiresAppQuit,
+                  selectedCategoryIds.contains(category.id),
+                  scanResults[category.id] != nil else { return false }
+            return isAppRunning(bundleId)
         }
     }
 
@@ -463,8 +489,10 @@ final class CleanViewModel: ObservableObject {
         let hasFlutter = !flutterSelection.isEmpty
         guard hasCategories || hasNodeModules || hasFlutter else { return }
 
-        let totalItems = combinedSelectedItemCount
-        let totalBytes = combinedSelectedBytes
+        let blocked = categoriesBlockedByRunningApps
+        let blockedResults = blocked.compactMap { scanResults[$0.id] }
+        let totalItems = combinedSelectedItemCount - blockedResults.reduce(0) { $0 + $1.items.count }
+        let totalBytes = combinedSelectedBytes - blockedResults.reduce(0) { $0 + $1.totalBytes }
 
         if hasCategories { await apply(permanently: permanently) }
         if hasNodeModules { await trashSelectedNodeModules(permanently: permanently) }
@@ -473,7 +501,8 @@ final class CleanViewModel: ObservableObject {
         previewBanner = PreviewSummary(
             items: totalItems,
             bytes: totalBytes,
-            kind: bannerKind(permanently: permanently)
+            kind: bannerKind(permanently: permanently),
+            skippedApps: blocked.map(\.title)
         )
         if dryRun { scheduleBannerDismiss() }
     }

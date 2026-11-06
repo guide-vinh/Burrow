@@ -124,6 +124,71 @@ final class SafeFileOpsTests: XCTestCase {
         XCTAssertTrue(error.localizedDescription.contains("Burrow.app"))
     }
 
+    // MARK: - validate iCloud Drive folders
+
+    /// Builds `<fixture>/Library/Mobile Documents/<relative>` and returns it.
+    private func makeICloudItem(_ relative: String, isFile: Bool = false) throws -> URL {
+        let url = fixture.appendingPathComponent("Library/Mobile Documents/\(relative)")
+        let fm = FileManager.default
+        if isFile {
+            try fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try Data("ok".utf8).write(to: url)
+        } else {
+            try fm.createDirectory(at: url, withIntermediateDirectories: true)
+        }
+        return url
+    }
+
+    func testICloudProtectsStructuralFolders() throws {
+        let home = fixture.path
+        let container = try makeICloudItem("com~apple~CloudDocs")
+        let documents = try makeICloudItem("iCloud~md~obsidian/Documents")
+        for url in [container, documents, container.deletingLastPathComponent(), fixture.appendingPathComponent("Library")] {
+            XCTAssertTrue(SafeFileOps.isICloudStructural(url, home: home), url.path)
+        }
+    }
+
+    func testICloudMatchesCaseInsensitively() throws {
+        let documents = try makeICloudItem("iCloud~md~obsidian/Documents")
+        let respelled = documents.deletingLastPathComponent().appendingPathComponent("DOCUMENTS")
+        XCTAssertTrue(SafeFileOps.isICloudStructural(respelled, home: fixture.path))
+    }
+
+    func testICloudProtectsSymlinkToContainer() throws {
+        let container = try makeICloudItem("com~apple~CloudDocs")
+        let link = fixture.appendingPathComponent("cloud-link")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: container)
+        XCTAssertTrue(SafeFileOps.isICloudStructural(link, home: fixture.path))
+    }
+
+    func testICloudAllowsContentInsideStores() throws {
+        let home = fixture.path
+        let allowed = [
+            try makeICloudItem("com~apple~CloudDocs/Projects"),
+            try makeICloudItem("com~apple~CloudDocs/Projects/notes.txt", isFile: true),
+            try makeICloudItem("iCloud~md~obsidian/Documents/Vault"),
+            try makeICloudItem("stray-file.txt", isFile: true),
+        ]
+        for url in allowed {
+            XCTAssertFalse(SafeFileOps.isICloudStructural(url, home: home), url.path)
+        }
+    }
+
+    func testICloudIgnoresUnrelatedPaths() throws {
+        let other = fixture.appendingPathComponent("Library/Caches/Mobile Documents")
+        try FileManager.default.createDirectory(at: other, withIntermediateDirectories: true)
+        XCTAssertFalse(SafeFileOps.isICloudStructural(other, home: fixture.path))
+    }
+
+    func testValidateRejectsLibraryRoot() {
+        let url = URL(fileURLWithPath: NSHomeDirectory() + "/Library")
+        XCTAssertThrowsError(try SafeFileOps.validate(url)) { err in
+            guard case SafeFileError.protectedPath = err else {
+                return XCTFail("expected protectedPath, got \(err)")
+            }
+        }
+    }
+
     func testValidateRejectsNonexistent() {
         let url = fixture.appendingPathComponent("never-existed")
         XCTAssertThrowsError(try SafeFileOps.validate(url)) { err in
