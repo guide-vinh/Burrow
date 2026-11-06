@@ -61,7 +61,17 @@
         { "kind": "directoryContents", "path": "~/Library/Caches/BraveSoftware/Brave-Browser" },
         { "kind": "glob",              "path": "~/Library/Application Support/BraveSoftware/Brave-Browser/*/Cache" },
         { "kind": "glob",              "path": "~/Library/Application Support/BraveSoftware/Brave-Browser/*/Code Cache" },
-        { "kind": "glob",              "path": "~/Library/Application Support/BraveSoftware/Brave-Browser/*/Service Worker/CacheStorage" }
+        { "kind": "glob",              "path": "~/Library/Application Support/BraveSoftware/Brave-Browser/*/Service Worker/CacheStorage" },
+        { "kind": "glob",              "path": "~/Library/Application Support/BraveSoftware/Brave-Browser/*/Application Cache" },
+        { "kind": "glob",              "path": "~/Library/Application Support/BraveSoftware/Brave-Browser/*/DawnCache" },
+        { "kind": "glob",              "path": "~/Library/Application Support/BraveSoftware/Brave-Browser/*/GPUCache" },
+        { "kind": "glob",              "path": "~/Library/Application Support/BraveSoftware/Brave-Browser/*/GrShaderCache" },
+        { "kind": "glob",              "path": "~/Library/Application Support/BraveSoftware/Brave-Browser/*/GraphiteDawnCache" },
+        { "kind": "directoryContents", "path": "~/Library/Application Support/BraveSoftware/Brave-Browser/Crashpad/completed" },
+        { "kind": "directoryContents", "path": "~/Library/Application Support/BraveSoftware/Brave-Browser/GrShaderCache" },
+        { "kind": "directoryContents", "path": "~/Library/Application Support/BraveSoftware/Brave-Browser/GraphiteDawnCache" },
+        { "kind": "directoryContents", "path": "~/Library/Application Support/BraveSoftware/Brave-Browser/ShaderCache" },
+        { "kind": "directoryContents", "path": "~/Library/Application Support/BraveSoftware/Brave-Browser/component_crx_cache" }
       ]
     },
     {
@@ -76,7 +86,27 @@
       "rules": [
         { "kind": "directoryContents", "path": "~/Library/Caches/company.thebrowser.Browser" },
         { "kind": "glob",              "path": "~/Library/Application Support/Arc/User Data/*/Cache" },
-        { "kind": "glob",              "path": "~/Library/Application Support/Arc/User Data/*/Service Worker/CacheStorage" }
+        { "kind": "glob",              "path": "~/Library/Application Support/Arc/User Data/*/Service Worker/CacheStorage" },
+        { "kind": "glob",              "path": "~/Library/Application Support/Arc/*/Code Cache" },
+        { "kind": "glob",              "path": "~/Library/Application Support/Arc/*/DawnCache" },
+        { "kind": "glob",              "path": "~/Library/Application Support/Arc/*/GPUCache" },
+        { "kind": "glob",              "path": "~/Library/Application Support/Arc/*/GrShaderCache" },
+        { "kind": "glob",              "path": "~/Library/Application Support/Arc/*/GraphiteDawnCache" },
+        { "kind": "directoryContents", "path": "~/Library/Application Support/Arc/Crashpad/completed" },
+        { "kind": "directoryContents", "path": "~/Library/Application Support/Arc/GrShaderCache" },
+        { "kind": "directoryContents", "path": "~/Library/Application Support/Arc/GraphiteDawnCache" },
+        { "kind": "directoryContents", "path": "~/Library/Application Support/Arc/ShaderCache" },
+        { "kind": "glob",              "path": "~/Library/Application Support/Arc/User Data/*/Code Cache" },
+        { "kind": "glob",              "path": "~/Library/Application Support/Arc/User Data/*/DawnCache" },
+        { "kind": "glob",              "path": "~/Library/Application Support/Arc/User Data/*/GPUCache" },
+        { "kind": "glob",              "path": "~/Library/Application Support/Arc/User Data/*/GrShaderCache" },
+        { "kind": "glob",              "path": "~/Library/Application Support/Arc/User Data/*/GraphiteDawnCache" },
+        { "kind": "directoryContents", "path": "~/Library/Application Support/Arc/User Data/Crashpad/completed" },
+        { "kind": "directoryContents", "path": "~/Library/Application Support/Arc/User Data/GrShaderCache" },
+        { "kind": "directoryContents", "path": "~/Library/Application Support/Arc/User Data/GraphiteDawnCache" },
+        { "kind": "directoryContents", "path": "~/Library/Application Support/Arc/User Data/ShaderCache" },
+        { "kind": "directoryContents", "path": "~/Library/Application Support/Arc/User Data/component_crx_cache" },
+        { "kind": "directoryContents", "path": "~/Library/Application Support/Arc/User Data/extensions_crx_cache" }
       ]
     },
     {
@@ -93,7 +123,8 @@
         { "kind": "glob",              "path": "~/Library/Application Support/Microsoft Edge/*/Cache" },
         { "kind": "glob",              "path": "~/Library/Application Support/Microsoft Edge/*/Code Cache" },
         { "kind": "glob",              "path": "~/Library/Application Support/Microsoft Edge/*/GPUCache" },
-        { "kind": "glob",              "path": "~/Library/Application Support/Microsoft Edge/*/Service Worker/CacheStorage" }
+        { "kind": "glob",              "path": "~/Library/Application Support/Microsoft Edge/*/Service Worker/CacheStorage" },
+        { "kind": "directoryContents", "path": "~/Library/Caches/com.microsoft.edgemac" }
       ]
     },
     {
@@ -110,7 +141,15 @@
         { "kind": "glob",              "path": "~/Library/Application Support/Vivaldi/*/Cache" },
         { "kind": "glob",              "path": "~/Library/Application Support/Vivaldi/*/Code Cache" },
         { "kind": "glob",              "path": "~/Library/Application Support/Vivaldi/*/GPUCache" },
-        { "kind": "glob",              "path": "~/Library/Application Support/Vivaldi/*/Service Worker/CacheStorage" }
+        { "kind": "glob",              "path": "~/Library/Application Support/Vivaldi/*/Service Worker/CacheStorage" },
+        { "kind": "glob",              "path": "~/Library/Application Support/Vivaldi/*/DawnCache" },
+        { "kind": "glob",              "path": "~/Library/Application Support/Vivaldi/*/GrShaderCache" },
+        { "kind": "glob",              "path": "~/Library/Application Support/Vivaldi/*/GraphiteDawnCache" },
+        { "kind": "directoryContents", "path": "~/Library/Application Support/Vivaldi/Crashpad/completed" },
+        { "kind": "directoryContents", "path": "~/Library/Application Support/Vivaldi/GrShaderCache" },
+        { "kind": "directoryContents", "path": "~/Library/Application Support/Vivaldi/GraphiteDawnCache" },
+        { "kind": "directoryContents", "path": "~/Library/Application Support/Vivaldi/ShaderCache" },
+        { "kind": "directoryContents", "path": "~/Library/Caches/com.vivaldi.Vivaldi" }
       ]
     },
     {
@@ -126,7 +165,13 @@
         { "kind": "directoryContents", "path": "~/Library/Caches/company.thebrowser.dia" },
         { "kind": "directoryContents", "path": "~/Library/Caches/Dia/User Data" },
         { "kind": "glob",              "path": "~/Library/Application Support/Dia/User Data/*/GPUCache" },
-        { "kind": "glob",              "path": "~/Library/Application Support/Dia/User Data/*/Service Worker/CacheStorage" }
+        { "kind": "glob",              "path": "~/Library/Application Support/Dia/User Data/*/Service Worker/CacheStorage" },
+        { "kind": "glob",              "path": "~/Library/Application Support/Dia/User Data/*/DawnGraphiteCache" },
+        { "kind": "glob",              "path": "~/Library/Application Support/Dia/User Data/*/DawnWebGPUCache" },
+        { "kind": "directoryContents", "path": "~/Library/Application Support/Dia/User Data/GPUPersistentCache" },
+        { "kind": "directoryContents", "path": "~/Library/Application Support/Dia/User Data/GraphiteDawnCache" },
+        { "kind": "directoryContents", "path": "~/Library/Application Support/Dia/User Data/component_crx_cache" },
+        { "kind": "directoryContents", "path": "~/Library/Application Support/Dia/User Data/extensions_crx_cache" }
       ]
     },
     {
@@ -236,7 +281,8 @@
       "risk": "low",
       "defaultEnabled": true,
       "rules": [
-        { "kind": "directoryContents", "path": "~/Library/pnpm/store" }
+        { "kind": "directoryContents", "path": "~/Library/pnpm/store" },
+        { "kind": "glob",              "path": "~/Library/Caches/pnpm/metadata*" }
       ]
     },
     {
@@ -638,7 +684,9 @@
       "risk": "low",
       "defaultEnabled": true,
       "rules": [
-        { "kind": "directoryContents", "path": "~/.cache/poetry" }
+        { "kind": "directoryContents", "path": "~/.cache/poetry" },
+        { "kind": "directoryContents", "path": "~/Library/Caches/pypoetry/artifacts" },
+        { "kind": "directoryContents", "path": "~/Library/Caches/pypoetry/cache" }
       ]
     },
     {
@@ -1050,6 +1098,660 @@
       "defaultEnabled": true,
       "rules": [
         { "kind": "glob", "path": "~/Library/Caches/com.unity3d.*" }
+      ]
+    },
+    {
+      "id": "browser.browseros",
+      "title": "BrowserOS",
+      "summary": "Cache, GPU and shader caches",
+      "group": "browser",
+      "icon": "globe",
+      "risk": "low",
+      "defaultEnabled": true,
+      "rules": [
+        { "kind": "glob",              "path": "~/Library/Application Support/BrowserOS/*/DawnGraphiteCache" },
+        { "kind": "glob",              "path": "~/Library/Application Support/BrowserOS/*/DawnWebGPUCache" },
+        { "kind": "glob",              "path": "~/Library/Application Support/BrowserOS/*/GPUCache" },
+        { "kind": "directoryContents", "path": "~/Library/Application Support/BrowserOS/Crashpad/completed" },
+        { "kind": "directoryContents", "path": "~/Library/Application Support/BrowserOS/GPUPersistentCache" },
+        { "kind": "directoryContents", "path": "~/Library/Application Support/BrowserOS/GrShaderCache" },
+        { "kind": "directoryContents", "path": "~/Library/Application Support/BrowserOS/GraphiteDawnCache" },
+        { "kind": "directoryContents", "path": "~/Library/Application Support/BrowserOS/ShaderCache" },
+        { "kind": "directoryContents", "path": "~/Library/Application Support/BrowserOS/component_crx_cache" },
+        { "kind": "glob",              "path": "~/Library/Caches/BrowserOS/*/Cache" },
+        { "kind": "glob",              "path": "~/Library/Caches/BrowserOS/*/Code Cache" }
+      ]
+    },
+    {
+      "id": "browser.helium",
+      "title": "Helium",
+      "summary": "Cache, GPU and shader caches",
+      "group": "browser",
+      "icon": "globe",
+      "risk": "low",
+      "defaultEnabled": true,
+      "requiresAppQuit": "net.imput.helium",
+      "rules": [
+        { "kind": "glob",              "path": "~/Library/Application Support/net.imput.helium/*/Application Cache" },
+        { "kind": "glob",              "path": "~/Library/Application Support/net.imput.helium/*/GPUCache" },
+        { "kind": "directoryContents", "path": "~/Library/Application Support/net.imput.helium/GrShaderCache" },
+        { "kind": "directoryContents", "path": "~/Library/Application Support/net.imput.helium/GraphiteDawnCache" },
+        { "kind": "directoryContents", "path": "~/Library/Application Support/net.imput.helium/ShaderCache" },
+        { "kind": "directoryContents", "path": "~/Library/Application Support/net.imput.helium/component_crx_cache" },
+        { "kind": "directoryContents", "path": "~/Library/Application Support/net.imput.helium/extensions_crx_cache" },
+        { "kind": "directoryContents", "path": "~/Library/Caches/net.imput.helium" }
+      ]
+    },
+    {
+      "id": "browser.yandex",
+      "title": "Yandex Browser",
+      "summary": "Cache, GPU and shader caches",
+      "group": "browser",
+      "icon": "globe",
+      "risk": "low",
+      "defaultEnabled": true,
+      "rules": [
+        { "kind": "glob",              "path": "~/Library/Application Support/Yandex/YandexBrowser/*/GPUCache" },
+        { "kind": "directoryContents", "path": "~/Library/Application Support/Yandex/YandexBrowser/GrShaderCache" },
+        { "kind": "directoryContents", "path": "~/Library/Application Support/Yandex/YandexBrowser/GraphiteDawnCache" },
+        { "kind": "directoryContents", "path": "~/Library/Application Support/Yandex/YandexBrowser/ShaderCache" },
+        { "kind": "directoryContents", "path": "~/Library/Caches/Yandex/YandexBrowser" }
+      ]
+    },
+    {
+      "id": "browser.opera",
+      "title": "Opera",
+      "summary": "Browser cache",
+      "group": "browser",
+      "icon": "globe",
+      "risk": "low",
+      "defaultEnabled": true,
+      "requiresAppQuit": "com.operasoftware.Opera",
+      "rules": [
+        { "kind": "directoryContents", "path": "~/Library/Caches/com.operasoftware.Opera" }
+      ]
+    },
+    {
+      "id": "browser.chromium",
+      "title": "Chromium",
+      "summary": "Browser cache",
+      "group": "browser",
+      "icon": "globe",
+      "risk": "low",
+      "defaultEnabled": true,
+      "rules": [
+        { "kind": "directoryContents", "path": "~/Library/Caches/Chromium" }
+      ]
+    },
+    {
+      "id": "browser.comet",
+      "title": "Comet",
+      "summary": "Browser cache",
+      "group": "browser",
+      "icon": "globe",
+      "risk": "low",
+      "defaultEnabled": true,
+      "rules": [
+        { "kind": "directoryContents", "path": "~/Library/Caches/Comet" }
+      ]
+    },
+    {
+      "id": "browser.zen",
+      "title": "Zen Browser",
+      "summary": "Browser cache",
+      "group": "browser",
+      "icon": "globe",
+      "risk": "low",
+      "defaultEnabled": true,
+      "rules": [
+        { "kind": "directoryContents", "path": "~/Library/Caches/zen" }
+      ]
+    },
+    {
+      "id": "browser.orion",
+      "title": "Orion",
+      "summary": "Browser cache",
+      "group": "browser",
+      "icon": "globe",
+      "risk": "low",
+      "defaultEnabled": true,
+      "requiresAppQuit": "com.kagi.kagimacOS",
+      "rules": [
+        { "kind": "directoryContents", "path": "~/Library/Caches/com.kagi.kagimacOS" }
+      ]
+    },
+    {
+      "id": "browser.ora",
+      "title": "Ora",
+      "summary": "Browser cache",
+      "group": "browser",
+      "icon": "globe",
+      "risk": "low",
+      "defaultEnabled": true,
+      "requiresAppQuit": "com.orabrowser.app",
+      "rules": [
+        { "kind": "directoryContents", "path": "~/Library/Caches/com.orabrowser.app" }
+      ]
+    },
+    {
+      "id": "developer.expo",
+      "title": "Expo",
+      "summary": "Expo Go, simulator and template caches",
+      "group": "developer",
+      "icon": "hammer",
+      "risk": "low",
+      "defaultEnabled": true,
+      "rules": [
+        { "kind": "directoryContents", "path": "~/.expo/android-apk-cache" },
+        { "kind": "directoryContents", "path": "~/.expo/expo-go" },
+        { "kind": "directoryContents", "path": "~/.expo/ios-simulator-app-cache" },
+        { "kind": "directoryContents", "path": "~/.expo/native-modules-cache" },
+        { "kind": "directoryContents", "path": "~/.expo/schema-cache" },
+        { "kind": "directoryContents", "path": "~/.expo/template-cache" },
+        { "kind": "directoryContents", "path": "~/.expo/versions-cache" }
+      ]
+    },
+    {
+      "id": "developer.tnpm",
+      "title": "tnpm",
+      "summary": "tnpm package cache and logs",
+      "group": "developer",
+      "icon": "shippingbox",
+      "risk": "low",
+      "defaultEnabled": true,
+      "rules": [
+        { "kind": "directoryContents", "path": "~/.tnpm/_cacache" },
+        { "kind": "directoryContents", "path": "~/.tnpm/_logs" }
+      ]
+    },
+    {
+      "id": "developer.pre_commit",
+      "title": "pre-commit",
+      "summary": "Hook environments, rebuilt on the next run",
+      "group": "developer",
+      "icon": "hammer",
+      "risk": "medium",
+      "defaultEnabled": false,
+      "rules": [
+        { "kind": "directoryContents", "path": "~/.cache/pre-commit" }
+      ]
+    },
+    {
+      "id": "developer.puppeteer",
+      "title": "Puppeteer",
+      "summary": "Downloaded browsers, fetched again on next install",
+      "group": "developer",
+      "icon": "hammer",
+      "risk": "medium",
+      "defaultEnabled": false,
+      "rules": [
+        { "kind": "directoryContents", "path": "~/.cache/puppeteer" }
+      ]
+    },
+    {
+      "id": "developer.prisma",
+      "title": "Prisma",
+      "summary": "Downloaded query engines, fetched again on next use",
+      "group": "developer",
+      "icon": "hammer",
+      "risk": "medium",
+      "defaultEnabled": false,
+      "rules": [
+        { "kind": "directoryContents", "path": "~/.cache/prisma" }
+      ]
+    },
+    {
+      "id": "developer.lima",
+      "title": "Lima",
+      "summary": "Downloaded VM images, fetched again on next start",
+      "group": "developer",
+      "icon": "hammer",
+      "risk": "medium",
+      "defaultEnabled": false,
+      "rules": [
+        { "kind": "directoryContents", "path": "~/Library/Caches/lima/download/by-url-sha256" }
+      ]
+    },
+    {
+      "id": "developer.vagrant_tmp",
+      "title": "Vagrant temp files",
+      "summary": "Temporary box downloads",
+      "group": "developer",
+      "icon": "hammer",
+      "risk": "medium",
+      "defaultEnabled": false,
+      "rules": [
+        { "kind": "directoryContents", "path": "~/.vagrant.d/tmp" }
+      ]
+    },
+    {
+      "id": "developer.tool_caches",
+      "title": "Other developer tool caches",
+      "summary": "Small caches from CLI tools and test runners",
+      "group": "developer",
+      "icon": "hammer",
+      "risk": "low",
+      "defaultEnabled": true,
+      "rules": [
+        { "kind": "directoryContents", "path": "~/.cache/curl" },
+        { "kind": "directoryContents", "path": "~/.cache/gitlab-runner" },
+        { "kind": "directoryContents", "path": "~/.cache/opencode" },
+        { "kind": "directoryContents", "path": "~/.cache/wget" },
+        { "kind": "directoryContents", "path": "~/.circleci/cache" },
+        { "kind": "directoryContents", "path": "~/.cpan/build" },
+        { "kind": "directoryContents", "path": "~/.gem/specs" },
+        { "kind": "directoryContents", "path": "~/.github/cache" },
+        { "kind": "directoryContents", "path": "~/.grafana/cache" },
+        { "kind": "directoryContents", "path": "~/.hex/cache" },
+        { "kind": "directoryContents", "path": "~/.oh-my-zsh/cache" },
+        { "kind": "directoryContents", "path": "~/.opam/download-cache" },
+        { "kind": "directoryContents", "path": "~/.parcel-cache" },
+        { "kind": "directoryContents", "path": "~/.pytest_cache" },
+        { "kind": "directoryContents", "path": "~/.vite/cache" },
+        { "kind": "directoryContents", "path": "~/Library/Caches/curl" },
+        { "kind": "directoryContents", "path": "~/Library/Caches/wget" }
+      ]
+    },
+    {
+      "id": "developer.zed",
+      "title": "Zed",
+      "summary": "Zed editor cache",
+      "group": "developer",
+      "icon": "hammer",
+      "risk": "low",
+      "defaultEnabled": true,
+      "rules": [
+        { "kind": "directoryContents", "path": "~/Library/Caches/Zed" }
+      ]
+    },
+    {
+      "id": "developer.warp",
+      "title": "Warp",
+      "summary": "Warp caches",
+      "group": "developer",
+      "icon": "hammer",
+      "risk": "low",
+      "defaultEnabled": true,
+      "requiresAppQuit": "dev.warp.Warp-Stable",
+      "rules": [
+        { "kind": "directoryContents", "path": "~/Library/Caches/dev.warp.Warp-Stable" }
+      ]
+    },
+    {
+      "id": "developer.ghostty",
+      "title": "Ghostty",
+      "summary": "Ghostty caches",
+      "group": "developer",
+      "icon": "hammer",
+      "risk": "low",
+      "defaultEnabled": true,
+      "requiresAppQuit": "com.mitchellh.ghostty",
+      "rules": [
+        { "kind": "directoryContents", "path": "~/Library/Caches/com.mitchellh.ghostty" }
+      ]
+    },
+    {
+      "id": "developer.sublime",
+      "title": "Sublime Text",
+      "summary": "Sublime Text caches",
+      "group": "developer",
+      "icon": "hammer",
+      "risk": "low",
+      "defaultEnabled": true,
+      "rules": [
+        { "kind": "glob", "path": "~/Library/Caches/com.sublimetext.*" }
+      ]
+    },
+    {
+      "id": "developer.proxyman",
+      "title": "Proxyman",
+      "summary": "Proxyman caches",
+      "group": "developer",
+      "icon": "hammer",
+      "risk": "low",
+      "defaultEnabled": true,
+      "requiresAppQuit": "com.proxyman.NSProxy",
+      "rules": [
+        { "kind": "directoryContents", "path": "~/Library/Caches/com.proxyman.NSProxy" }
+      ]
+    },
+    {
+      "id": "developer.charles",
+      "title": "Charles",
+      "summary": "Charles caches",
+      "group": "developer",
+      "icon": "hammer",
+      "risk": "low",
+      "defaultEnabled": true,
+      "requiresAppQuit": "com.charlesproxy.charles",
+      "rules": [
+        { "kind": "directoryContents", "path": "~/Library/Caches/com.charlesproxy.charles" }
+      ]
+    },
+    {
+      "id": "developer.sequel_ace",
+      "title": "Sequel Ace",
+      "summary": "Sequel Ace caches",
+      "group": "developer",
+      "icon": "hammer",
+      "risk": "low",
+      "defaultEnabled": true,
+      "requiresAppQuit": "com.sequel-ace.sequel-ace",
+      "rules": [
+        { "kind": "directoryContents", "path": "~/Library/Caches/com.sequel-ace.sequel-ace" }
+      ]
+    },
+    {
+      "id": "developer.navicat",
+      "title": "Navicat",
+      "summary": "Navicat caches",
+      "group": "developer",
+      "icon": "hammer",
+      "risk": "low",
+      "defaultEnabled": true,
+      "rules": [
+        { "kind": "glob", "path": "~/Library/Caches/com.navicat.*" }
+      ]
+    },
+    {
+      "id": "developer.redis_insight",
+      "title": "Redis Insight",
+      "summary": "Redis Insight caches",
+      "group": "developer",
+      "icon": "hammer",
+      "risk": "low",
+      "defaultEnabled": true,
+      "requiresAppQuit": "com.redis.RedisInsight",
+      "rules": [
+        { "kind": "directoryContents", "path": "~/Library/Caches/com.redis.RedisInsight" }
+      ]
+    },
+    {
+      "id": "developer.lm_studio",
+      "title": "LM Studio",
+      "summary": "LM Studio caches",
+      "group": "developer",
+      "icon": "hammer",
+      "risk": "low",
+      "defaultEnabled": true,
+      "requiresAppQuit": "com.lmstudio.lmstudio",
+      "rules": [
+        { "kind": "directoryContents", "path": "~/Library/Caches/com.lmstudio.lmstudio" }
+      ]
+    },
+    {
+      "id": "app.zoom",
+      "title": "Zoom",
+      "summary": "Zoom caches",
+      "group": "app",
+      "icon": "macwindow",
+      "risk": "low",
+      "defaultEnabled": true,
+      "requiresAppQuit": "us.zoom.xos",
+      "rules": [
+        { "kind": "directoryContents", "path": "~/Library/Caches/us.zoom.xos" }
+      ]
+    },
+    {
+      "id": "app.teams",
+      "title": "Microsoft Teams",
+      "summary": "Microsoft Teams caches",
+      "group": "app",
+      "icon": "macwindow",
+      "risk": "low",
+      "defaultEnabled": true,
+      "requiresAppQuit": "com.microsoft.teams2",
+      "rules": [
+        { "kind": "directoryContents", "path": "~/Library/Caches/com.microsoft.teams2" }
+      ]
+    },
+    {
+      "id": "app.chatgpt",
+      "title": "ChatGPT",
+      "summary": "ChatGPT caches",
+      "group": "app",
+      "icon": "macwindow",
+      "risk": "low",
+      "defaultEnabled": true,
+      "requiresAppQuit": "com.openai.chat",
+      "rules": [
+        { "kind": "directoryContents", "path": "~/Library/Caches/com.openai.chat" }
+      ]
+    },
+    {
+      "id": "app.claude",
+      "title": "Claude",
+      "summary": "Claude caches",
+      "group": "app",
+      "icon": "macwindow",
+      "risk": "low",
+      "defaultEnabled": true,
+      "requiresAppQuit": "com.anthropic.claudefordesktop",
+      "rules": [
+        { "kind": "directoryContents", "path": "~/Library/Caches/com.anthropic.claudefordesktop" }
+      ]
+    },
+    {
+      "id": "app.alfred",
+      "title": "Alfred",
+      "summary": "Alfred caches",
+      "group": "app",
+      "icon": "macwindow",
+      "risk": "low",
+      "defaultEnabled": true,
+      "requiresAppQuit": "com.runningwithcrayons.Alfred",
+      "rules": [
+        { "kind": "directoryContents", "path": "~/Library/Caches/com.runningwithcrayons.Alfred" }
+      ]
+    },
+    {
+      "id": "app.cleanshot",
+      "title": "CleanShot",
+      "summary": "CleanShot caches",
+      "group": "app",
+      "icon": "macwindow",
+      "risk": "low",
+      "defaultEnabled": true,
+      "rules": [
+        { "kind": "glob", "path": "~/Library/Caches/com.cleanshot.*" }
+      ]
+    },
+    {
+      "id": "app.vlc",
+      "title": "VLC",
+      "summary": "VLC caches",
+      "group": "app",
+      "icon": "macwindow",
+      "risk": "low",
+      "defaultEnabled": true,
+      "requiresAppQuit": "org.videolan.vlc",
+      "rules": [
+        { "kind": "directoryContents", "path": "~/Library/Caches/org.videolan.vlc" }
+      ]
+    },
+    {
+      "id": "app.iina",
+      "title": "IINA",
+      "summary": "IINA caches",
+      "group": "app",
+      "icon": "macwindow",
+      "risk": "low",
+      "defaultEnabled": true,
+      "requiresAppQuit": "com.colliderli.iina",
+      "rules": [
+        { "kind": "directoryContents", "path": "~/Library/Caches/com.colliderli.iina" }
+      ]
+    },
+    {
+      "id": "app.mpv",
+      "title": "mpv",
+      "summary": "mpv caches",
+      "group": "app",
+      "icon": "macwindow",
+      "risk": "low",
+      "defaultEnabled": true,
+      "rules": [
+        { "kind": "directoryContents", "path": "~/Library/Caches/io.mpv" }
+      ]
+    },
+    {
+      "id": "app.plex",
+      "title": "Plex",
+      "summary": "Plex caches",
+      "group": "app",
+      "icon": "macwindow",
+      "risk": "low",
+      "defaultEnabled": true,
+      "requiresAppQuit": "tv.plex.player.desktop",
+      "rules": [
+        { "kind": "directoryContents", "path": "~/Library/Caches/tv.plex.player.desktop" }
+      ]
+    },
+    {
+      "id": "app.transmission",
+      "title": "Transmission",
+      "summary": "Transmission caches",
+      "group": "app",
+      "icon": "macwindow",
+      "risk": "low",
+      "defaultEnabled": true,
+      "requiresAppQuit": "org.m0k.transmission",
+      "rules": [
+        { "kind": "directoryContents", "path": "~/Library/Caches/org.m0k.transmission" }
+      ]
+    },
+    {
+      "id": "app.qbittorrent",
+      "title": "qBittorrent",
+      "summary": "qBittorrent caches",
+      "group": "app",
+      "icon": "macwindow",
+      "risk": "low",
+      "defaultEnabled": true,
+      "requiresAppQuit": "com.qbittorrent.qBittorrent",
+      "rules": [
+        { "kind": "directoryContents", "path": "~/Library/Caches/com.qbittorrent.qBittorrent" }
+      ]
+    },
+    {
+      "id": "app.unarchiver",
+      "title": "The Unarchiver",
+      "summary": "The Unarchiver caches",
+      "group": "app",
+      "icon": "macwindow",
+      "risk": "low",
+      "defaultEnabled": true,
+      "requiresAppQuit": "cx.c3.theunarchiver",
+      "rules": [
+        { "kind": "directoryContents", "path": "~/Library/Caches/cx.c3.theunarchiver" }
+      ]
+    },
+    {
+      "id": "app.sketch",
+      "title": "Sketch",
+      "summary": "Sketch caches",
+      "group": "app",
+      "icon": "macwindow",
+      "risk": "low",
+      "defaultEnabled": true,
+      "requiresAppQuit": "com.bohemiancoding.sketch3",
+      "rules": [
+        { "kind": "directoryContents", "path": "~/Library/Application Support/com.bohemiancoding.sketch3/cache" },
+        { "kind": "directoryContents", "path": "~/Library/Caches/com.bohemiancoding.sketch3" }
+      ]
+    },
+    {
+      "id": "app.blender",
+      "title": "Blender",
+      "summary": "Blender caches",
+      "group": "app",
+      "icon": "macwindow",
+      "risk": "low",
+      "defaultEnabled": true,
+      "requiresAppQuit": "org.blenderfoundation.blender",
+      "rules": [
+        { "kind": "directoryContents", "path": "~/Library/Caches/org.blenderfoundation.blender" }
+      ]
+    },
+    {
+      "id": "app.steam",
+      "title": "Steam",
+      "summary": "Web view cache and logs",
+      "group": "app",
+      "icon": "macwindow",
+      "risk": "low",
+      "defaultEnabled": true,
+      "requiresAppQuit": "com.valvesoftware.steam",
+      "rules": [
+        { "kind": "directoryContents", "path": "~/Library/Application Support/Steam/htmlcache" },
+        { "kind": "directoryContents", "path": "~/Library/Application Support/Steam/logs" },
+        { "kind": "directoryContents", "path": "~/Library/Caches/com.valvesoftware.steam" }
+      ]
+    },
+    {
+      "id": "app.epic_games",
+      "title": "Epic Games Launcher",
+      "summary": "Epic Games Launcher caches",
+      "group": "app",
+      "icon": "macwindow",
+      "risk": "low",
+      "defaultEnabled": true,
+      "requiresAppQuit": "com.epicgames.EpicGamesLauncher",
+      "rules": [
+        { "kind": "directoryContents", "path": "~/Library/Caches/com.epicgames.EpicGamesLauncher" }
+      ]
+    },
+    {
+      "id": "app.gog_galaxy",
+      "title": "GOG Galaxy",
+      "summary": "GOG Galaxy caches",
+      "group": "app",
+      "icon": "macwindow",
+      "risk": "low",
+      "defaultEnabled": true,
+      "requiresAppQuit": "com.gog.galaxy",
+      "rules": [
+        { "kind": "directoryContents", "path": "~/Library/Caches/com.gog.galaxy" }
+      ]
+    },
+    {
+      "id": "app.battle_net",
+      "title": "Battle.net",
+      "summary": "Battle.net caches",
+      "group": "app",
+      "icon": "macwindow",
+      "risk": "low",
+      "defaultEnabled": true,
+      "requiresAppQuit": "com.blizzard.Battle.net",
+      "rules": [
+        { "kind": "directoryContents", "path": "~/Library/Application Support/Battle.net/Cache" },
+        { "kind": "directoryContents", "path": "~/Library/Caches/com.blizzard.Battle.net" }
+      ]
+    },
+    {
+      "id": "app.telegram",
+      "title": "Telegram",
+      "summary": "Cached media, downloaded again when opened",
+      "group": "app",
+      "icon": "macwindow",
+      "risk": "medium",
+      "defaultEnabled": false,
+      "requiresAppQuit": "ru.keepcoder.Telegram",
+      "rules": [
+        { "kind": "directoryContents", "path": "~/Library/Caches/ru.keepcoder.Telegram" }
+      ]
+    },
+    {
+      "id": "app.whatsapp",
+      "title": "WhatsApp",
+      "summary": "Cached media, downloaded again when opened",
+      "group": "app",
+      "icon": "macwindow",
+      "risk": "medium",
+      "defaultEnabled": false,
+      "requiresAppQuit": "net.whatsapp.WhatsApp",
+      "rules": [
+        { "kind": "directoryContents", "path": "~/Library/Caches/net.whatsapp.WhatsApp" }
       ]
     }
   ]

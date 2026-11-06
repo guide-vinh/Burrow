@@ -49,7 +49,8 @@ enum SafeFileOps {
     ]
 
     /// Throws if `url` is in the deny-list, equals a protected user-folder
-    /// root or the home folder, holds the running app, or does not exist.
+    /// root or the home folder, is one of iCloud Drive's own folders, holds
+    /// the running app, or does not exist.
     ///
     /// Carve-out for Phase 2 Uninstall: items under an Applications
     /// root (`/Applications`, `~/Applications`) ARE allowed even though
@@ -65,7 +66,7 @@ enum SafeFileOps {
             throw SafeFileError.doesNotExist(url)
         }
 
-        if holdsRunningApp(url) {
+        if holdsRunningApp(url) || isICloudStructural(url) {
             throw SafeFileError.protectedPath(url)
         }
 
@@ -102,6 +103,31 @@ enum SafeFileOps {
             || path == app
             || path.hasPrefix(app + "/")
             || app.hasPrefix(path + "/")
+    }
+
+    /// True for iCloud Drive's own folders: `Mobile Documents`, each app
+    /// container in it, a container's `Documents`, and any folder holding
+    /// them (`~/Library`). Trashing one removes that store from every device
+    /// on the account. Files and folders inside them stay removable.
+    static func isICloudStructural(_ url: URL, home: String = NSHomeDirectory()) -> Bool {
+        let resolved = url.resolvingSymlinksInPath()
+        let path = resolved.path.lowercased()
+        let root = URL(fileURLWithPath: home)
+            .appendingPathComponent("Library/Mobile Documents")
+            .resolvingSymlinksInPath().path.lowercased()
+
+        if root.hasPrefix(path + "/") {
+            return true
+        }
+        guard path == root || path.hasPrefix(root + "/") else {
+            return false
+        }
+        let isDirectory = (try? resolved.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory ?? true
+        guard isDirectory else {
+            return false
+        }
+        let parts = path.dropFirst(root.count).split(separator: "/")
+        return parts.count <= 1 || (parts.count == 2 && parts[1] == "documents")
     }
 
     /// True if `path` is an uninstallable item under an Applications

@@ -97,6 +97,8 @@ Pattern set by `NodeModulesScanner` / `FlutterProjectScanner`:
   always behind a confirmation alert).
 - **Burrow never removes itself.** `validate(_:)` refuses the running bundle, anything inside
   it, and any folder containing it; `UninstallViewModel` hides Burrow (`InstalledApp.isBurrow`).
+- **iCloud Drive's own folders are off limits.** `validate(_:)` refuses `Mobile Documents`, its
+  containers, a container's `Documents` and `~/Library`; trashing one wipes it on every device.
 - Every action (including dry-runs) is appended to `OperationLog`.
 - `olderThanDays` filters on mtime; files whose age can't be read are conservatively skipped.
 

@@ -1,5 +1,5 @@
 # Pinned upstream tw93/Mole commit that Burrow's catalogs were last synced
 # against. sync_mole.py fetches lib/clean and lib/uninstall at this SHA so
 # diffs are reproducible. Update the SHA (and date) when you re-sync.
-sha=a0e86c5933766f8e64e539493266c442d884fc04
-date=2026-09-15
+sha=01febfc183ff13d9ded69eb3bd6c13228477d98f
+date=2026-11-05
