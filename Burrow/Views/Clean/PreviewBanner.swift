@@ -11,6 +11,7 @@ struct PreviewBanner: View {
     let onDismiss: () -> Void
 
     private var title: String {
+        if summary.items == 0 && !summary.skippedApps.isEmpty { return "Nothing cleaned" }
         switch summary.kind {
         case .preview:            return "Preview complete"
         case .trashed, .deleted:  return "Cleanup complete"
@@ -27,6 +28,10 @@ struct PreviewBanner: View {
         }
     }
 
+    private var skippedDetail: String {
+        "Skipped \(summary.skippedApps.joined(separator: ", ")). Quit and clean again."
+    }
+
     var body: some View {
         HStack(spacing: Spacing.md) {
             Image(systemName: "checkmark.circle.fill")
@@ -37,10 +42,17 @@ struct PreviewBanner: View {
                 Text(title)
                     .font(.bodySMed)
                     .foregroundStyle(Color.fgPrimary)
-                Text(detail)
-                    .font(.bodyS)
-                    .foregroundStyle(Color.fgSecondary)
-                    .monospacedDigit()
+                if summary.items > 0 {
+                    Text(detail)
+                        .font(.bodyS)
+                        .foregroundStyle(Color.fgSecondary)
+                        .monospacedDigit()
+                }
+                if !summary.skippedApps.isEmpty {
+                    Text(skippedDetail)
+                        .font(.bodyS)
+                        .foregroundStyle(Color.fgSecondary)
+                }
             }
 
             Spacer()

@@ -59,6 +59,7 @@ scripts/       release.sh, appcast.xml, ExportOptions.plist, icon generator
    `ScanItem`s (url + bytes) via `PathResolver`, filtered by the `SafeFileOps` deny-list.
 4. UI groups categories by `CategoryGroup` → `CategoryGroupSection` → `CategoryRow`.
 5. Apply: `RuleEngine.apply(_:dryRun:)` → `SafeFileOps.trash` (move to Trash) → `OperationLog`.
+   `CleanViewModel` skips a category while its `requiresAppQuit` app is open.
 
 **Rule kinds** (`CleanRule.swift`): `directoryContents`, `glob`, `command`.
 ⚠️ `command` is **not executed** (Phase 1 — `RuleEngine.resolveRule` skips it). Anything

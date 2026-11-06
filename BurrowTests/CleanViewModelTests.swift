@@ -181,6 +181,90 @@ final class CleanViewModelTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(banner.bytes, 2600)
     }
 
+    // MARK: - requiresAppQuit
+
+    /// One category that needs `com.example.open` quit, one that needs nothing.
+    private func catalogWithAppCategory() throws -> (CleanCatalog, appFile: URL, plainFile: URL) {
+        let appDir = fixture.appendingPathComponent("app")
+        let plainDir = fixture.appendingPathComponent("plain")
+        for dir in [appDir, plainDir] {
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        }
+        let appFile = appDir.appendingPathComponent("cache.bin")
+        let plainFile = plainDir.appendingPathComponent("cache.bin")
+        try Data(repeating: 0x01, count: 100).write(to: appFile)
+        try Data(repeating: 0x02, count: 100).write(to: plainFile)
+
+        func category(_ id: String, _ title: String, quit: String?, dir: URL) -> CleanCategory {
+            CleanCategory(
+                id: id, title: title, summary: "", group: .system, icon: "trash", risk: .low,
+                defaultEnabled: true, requiresAppQuit: quit, exclude: nil,
+                rules: [.directoryContents(path: dir.path, olderThanDays: nil, includeHidden: nil, needsPrivilege: nil)]
+            )
+        }
+        let catalog = CleanCatalog(schemaVersion: 1, categories: [
+            category("test.app", "Open App", quit: "com.example.open", dir: appDir),
+            category("test.plain", "Plain", quit: nil, dir: plainDir),
+        ])
+        return (catalog, appFile, plainFile)
+    }
+
+    func testApplySkipsCategoryWhileItsAppIsOpen() async throws {
+        let (catalog, appFile, plainFile) = try catalogWithAppCategory()
+        let vm = CleanViewModel(catalog: catalog, log: freshLog(), isAppRunning: { $0 == "com.example.open" })
+        await vm.scan()
+
+        await vm.applyAll()
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: appFile.path), "open app's cache must stay")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: plainFile.path))
+        XCTAssertEqual(Set(vm.scanResults.keys), ["test.app"], "skipped category stays listed")
+        XCTAssertEqual(vm.selectedCategoryIds, ["test.app"], "skipped category stays selected")
+    }
+
+    func testApplyAllBannerCountsOnlyWhatRanAndNamesSkippedApps() async throws {
+        let (catalog, _, _) = try catalogWithAppCategory()
+        let vm = CleanViewModel(catalog: catalog, log: freshLog(), isAppRunning: { $0 == "com.example.open" })
+        await vm.scan()
+        let plainBytes = try XCTUnwrap(vm.scanResults["test.plain"]).totalBytes
+
+        await vm.applyAll()
+
+        let banner = try XCTUnwrap(vm.previewBanner)
+        XCTAssertEqual(banner.items, 1)
+        XCTAssertEqual(banner.bytes, plainBytes)
+        XCTAssertEqual(banner.skippedApps, ["Open App"])
+    }
+
+    func testDryRunAlsoSkipsAndReportsOpenApp() async throws {
+        let (catalog, _, _) = try catalogWithAppCategory()
+        let vm = CleanViewModel(catalog: catalog, log: freshLog(), isAppRunning: { _ in true })
+        await vm.scan()
+        vm.dryRun = true
+
+        await vm.applyAll()
+
+        let banner = try XCTUnwrap(vm.previewBanner)
+        XCTAssertEqual(banner.items, 1)
+        XCTAssertEqual(banner.skippedApps, ["Open App"])
+    }
+
+    func testApplyCleansCategoryOnceItsAppIsClosed() async throws {
+        let (catalog, appFile, _) = try catalogWithAppCategory()
+        let vm = CleanViewModel(catalog: catalog, log: freshLog(), isAppRunning: { _ in false })
+        await vm.scan()
+
+        await vm.applyAll()
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: appFile.path))
+        XCTAssertEqual(vm.previewBanner?.skippedApps, [])
+    }
+
+    func testIsRunningChecksRealApps() {
+        XCTAssertTrue(CleanViewModel.isRunning("com.apple.finder"))
+        XCTAssertFalse(CleanViewModel.isRunning("com.example.not-installed"))
+    }
+
     func testScanClearsPreviewBanner() async throws {
         _ = try makeThreeFiles()
         let vm = CleanViewModel(catalog: syntheticCatalog(), log: freshLog())

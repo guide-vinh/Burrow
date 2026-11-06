@@ -15,4 +15,6 @@ struct PreviewSummary: Equatable {
     let items: Int
     let bytes: Int64
     var kind: Kind = .preview
+    /// Titles of categories left alone because their app is open.
+    var skippedApps: [String] = []
 }
