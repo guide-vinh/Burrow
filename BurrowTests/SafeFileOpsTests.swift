@@ -55,6 +55,75 @@ final class SafeFileOpsTests: XCTestCase {
         XCTAssertNoThrow(try SafeFileOps.validate(child))
     }
 
+    // MARK: - validate self-protection
+
+    private func assertProtected(_ url: URL, file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertThrowsError(try SafeFileOps.validate(url), file: file, line: line) { err in
+            guard case SafeFileError.protectedPath = err else {
+                return XCTFail("expected protectedPath, got \(err)", file: file, line: line)
+            }
+        }
+    }
+
+    func testValidateRejectsRunningApp() {
+        assertProtected(Bundle.main.bundleURL)
+    }
+
+    func testValidateRejectsInsideRunningApp() {
+        assertProtected(Bundle.main.bundleURL.appendingPathComponent("Contents/Info.plist"))
+    }
+
+    func testValidateRejectsFolderHoldingRunningApp() {
+        assertProtected(Bundle.main.bundleURL.deletingLastPathComponent())
+    }
+
+    func testValidateRejectsFilesystemRootAndHome() {
+        assertProtected(URL(fileURLWithPath: "/"))
+        assertProtected(URL(fileURLWithPath: NSHomeDirectory()))
+    }
+
+    func testValidateRejectsSymlinkToRunningApp() throws {
+        let link = fixture.appendingPathComponent("Burrow-link.app")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: Bundle.main.bundleURL)
+        assertProtected(link)
+    }
+
+    func testValidateAllowsSiblingOfRunningApp() throws {
+        // Same name prefix, but not the bundle — must not match by string prefix.
+        let sibling = URL(fileURLWithPath: Bundle.main.bundleURL.path + ".burrow-test-\(UUID().uuidString)")
+        try Data("ok".utf8).write(to: sibling)
+        defer { try? FileManager.default.removeItem(at: sibling) }
+        XCTAssertNoThrow(try SafeFileOps.validate(sibling))
+    }
+
+    func testValidateAllowsCopyOfBurrowThatIsNotRunning() throws {
+        // e.g. an old copy already in the Trash — Empty Trash must still reach it.
+        let copy = fixture.appendingPathComponent("Burrow.app")
+        try FileManager.default.createDirectory(at: copy, withIntermediateDirectories: true)
+        XCTAssertNoThrow(try SafeFileOps.validate(copy))
+    }
+
+    func testTrashAndDeleteRefuseRunningAppEvenInDryRun() async {
+        for operation in [
+            { try await SafeFileOps.trash(Bundle.main.bundleURL, dryRun: true) },
+            { try await SafeFileOps.permanentlyDelete(Bundle.main.bundleURL, dryRun: true) },
+        ] as [() async throws -> Int64] {
+            do {
+                _ = try await operation()
+                XCTFail("expected protectedPath")
+            } catch SafeFileError.protectedPath {
+                // expected
+            } catch {
+                XCTFail("expected protectedPath, got \(error)")
+            }
+        }
+    }
+
+    func testProtectedPathErrorNamesTheItem() {
+        let error = SafeFileError.protectedPath(URL(fileURLWithPath: "/Applications/Burrow.app"))
+        XCTAssertTrue(error.localizedDescription.contains("Burrow.app"))
+    }
+
     func testValidateRejectsNonexistent() {
         let url = fixture.appendingPathComponent("never-existed")
         XCTAssertThrowsError(try SafeFileOps.validate(url)) { err in

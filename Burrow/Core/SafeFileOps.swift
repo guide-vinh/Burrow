@@ -7,6 +7,13 @@ enum SafeFileError: Error {
     case trashFailed(URL, underlying: Error)
 }
 
+extension SafeFileError: LocalizedError {
+    var errorDescription: String? {
+        guard case .protectedPath(let url) = self else { return nil }
+        return "\(url.lastPathComponent) is protected and can't be removed."
+    }
+}
+
 /// Carries the human-readable reason a Finder-assisted trash failed (e.g.
 /// the user cancelled the admin authentication dialog) so the UI can show
 /// it verbatim.
@@ -42,7 +49,7 @@ enum SafeFileOps {
     ]
 
     /// Throws if `url` is in the deny-list, equals a protected user-folder
-    /// root, or does not exist.
+    /// root or the home folder, holds the running app, or does not exist.
     ///
     /// Carve-out for Phase 2 Uninstall: items under an Applications
     /// root (`/Applications`, `~/Applications`) ARE allowed even though
@@ -58,6 +65,10 @@ enum SafeFileOps {
             throw SafeFileError.doesNotExist(url)
         }
 
+        if holdsRunningApp(url) {
+            throw SafeFileError.protectedPath(url)
+        }
+
         if isAllowedAppBundleChild(path: path) {
             return
         }
@@ -69,12 +80,28 @@ enum SafeFileOps {
         }
 
         let home = NSHomeDirectory()
+        if path == home {
+            throw SafeFileError.protectedPath(url)
+        }
         for suffix in protectedHomeRootSuffixes {
             let root = home + suffix
             if path == root {
                 throw SafeFileError.protectedPath(url)
             }
         }
+    }
+
+    /// True if removing `url` would take the running Burrow with it: it is
+    /// the bundle (or a symlink to it), something inside the bundle, or a
+    /// folder containing it. Other copies of Burrow are not matched, so an
+    /// old copy in the Trash can still be emptied.
+    static func holdsRunningApp(_ url: URL) -> Bool {
+        let path = url.resolvingSymlinksInPath().path
+        let app = Bundle.main.bundleURL.resolvingSymlinksInPath().path
+        return path == "/"
+            || path == app
+            || path.hasPrefix(app + "/")
+            || app.hasPrefix(path + "/")
     }
 
     /// True if `path` is an uninstallable item under an Applications

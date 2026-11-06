@@ -38,3 +38,13 @@ struct InstalledApp: Hashable, Identifiable, Sendable {
 
     var id: String { bundleId }
 }
+
+extension InstalledApp {
+    /// True for Burrow itself: the release id, a `.dev`-style build of it, or
+    /// whichever bundle is running. Never offered for uninstall.
+    var isBurrow: Bool {
+        bundleId == "fun.burrow.app"
+            || bundleId.hasPrefix("fun.burrow.app.")
+            || SafeFileOps.holdsRunningApp(bundleURL)
+    }
+}

@@ -95,6 +95,8 @@ Pattern set by `NodeModulesScanner` / `FlutterProjectScanner`:
 - Everything is **moved to Trash** (`NSWorkspace.recycle`), never hard-deleted, except the
   explicit "Empty Trash" path and the user-confirmed **Delete** buttons (`permanentlyDelete`,
   always behind a confirmation alert).
+- **Burrow never removes itself.** `validate(_:)` refuses the running bundle, anything inside
+  it, and any folder containing it; `UninstallViewModel` hides Burrow (`InstalledApp.isBurrow`).
 - Every action (including dry-runs) is appended to `OperationLog`.
 - `olderThanDays` filters on mtime; files whose age can't be read are conservatively skipped.
 
