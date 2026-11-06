@@ -294,5 +294,17 @@
                 length="2696918"
                 type="application/octet-stream" />
         </item>
+        <item>
+            <title>Version 0.2.13</title>
+            <pubDate>Fri, 06 Nov 2026 03:25:40 +0000</pubDate>
+            <sparkle:version>25</sparkle:version>
+            <sparkle:shortVersionString>0.2.13</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>12.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/guide-vinh/Burrow/releases/download/v0.2.13/Burrow-0.2.13.zip"
+                sparkle:edSignature="PHy69CwQA6UMH7uxvDyJXq92ln82a3s498L0702cCuQFnw5Z1TUTbC5NvvtyE+mj/c5knjRNwZW8Q0C1PheODA=="
+                length="2689623"
+                type="application/octet-stream" />
+        </item>
     </channel>
 </rss>
