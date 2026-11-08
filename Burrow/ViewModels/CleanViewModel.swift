@@ -164,66 +164,90 @@ final class CleanViewModel: ObservableObject {
     // MARK: - Apply
 
     /// Trashes (or dry-runs) every ScanResult belonging to a selected
-    /// category. Per-category errors are recorded in `lastError` and
-    /// the loop continues — one bad category never aborts the batch.
+    /// category. A failed item never aborts the batch; failures are
+    /// summed into one plain-language `lastError`.
     /// Categories whose app is open are skipped and stay selected, so the
     /// user can quit it and clean again.
-    /// On a successful real (non-dry) apply, removes ONLY the
-    /// categories that were actually applied from `scanResults` and
-    /// `selectedCategoryIds`. (Previously this wiped the entire
-    /// scan dict, which made the header "Found N reclaimable" total
-    /// jump to zero after a partial cleanup — users had to re-scan
-    /// just to see what was still on disk.)
+    /// On a real (non-dry) apply, removes the categories that cleaned
+    /// without a single failure from `scanResults` and
+    /// `selectedCategoryIds`, even if another category failed. A category
+    /// with failures stays listed and selected, shrunk to the items that
+    /// are still on disk. (Previously this wiped the entire scan dict,
+    /// which made the header "Found N reclaimable" total jump to zero
+    /// after a partial cleanup.)
     func apply(permanently: Bool = false) async {
+        lastError = nil
+        let tally = await runApply(permanently: permanently)
+        if dryRun && (tally.failures == 0 || tally.items > 0) {
+            previewBanner = PreviewSummary(items: tally.items, bytes: tally.bytes)
+            scheduleBannerDismiss()
+        }
+        reportFailures(tally)
+    }
+
+    /// Category half of `apply`: does the work and returns what happened,
+    /// leaving `lastError` (other than "Catalog not loaded") to the caller.
+    private func runApply(permanently: Bool) async -> RunTally {
+        var tally = RunTally()
         guard let engine else {
             lastError = "Catalog not loaded"
             logger.warning("apply() called before catalog was loaded")
-            return
+            return tally
         }
 
         isApplying = true
         defer { isApplying = false }
 
-        var encounteredError = false
-        var totalBytes: Int64 = 0
-        var totalItems = 0
         var appliedIds: Set<String> = []
+        var remaining: [String: ScanResult] = [:]
         let blockedIds = Set(categoriesBlockedByRunningApps.map(\.id))
 
         for id in selectedCategoryIds.subtracting(blockedIds) {
             guard let result = scanResults[id] else { continue }
 
+            let outcome: RuleEngine.ApplyOutcome
             do {
-                let bytes = try await engine.apply(result, dryRun: dryRun, permanently: permanently)
-                totalBytes += bytes
-                totalItems += result.items.count
+                outcome = try await engine.apply(result, dryRun: dryRun, permanently: permanently)
+            } catch {
+                // Only cancellation throws; stop and keep what already ran.
+                logger.info("Apply cancelled before \(id, privacy: .public)")
+                break
+            }
+
+            tally.items += outcome.succeededCount
+            tally.bytes += outcome.bytes
+            tally.failures += outcome.failedItems.count
+            if let reason = outcome.firstFailure { tally.noteFailure(reason) }
+
+            if outcome.failedItems.isEmpty {
                 appliedIds.insert(id)
                 logger.info(
                     "Apply succeeded for \(id, privacy: .public) (dryRun=\(self.dryRun, privacy: .public))"
                 )
-            } catch {
-                let message = "Apply failed for \(id): \(error.localizedDescription)"
-                lastError = message
-                encounteredError = true
-                logger.error("\(message, privacy: .public)")
-                // continue — one bad category must not abort the batch
+            } else {
+                // Keep only the items that failed so sizes aren't stale.
+                remaining[id] = ScanResult(categoryId: id, items: outcome.failedItems)
+                logger.error(
+                    "Apply left \(outcome.failedItems.count, privacy: .public) items in \(id, privacy: .public)"
+                )
             }
         }
 
-        if !dryRun && !encounteredError {
-            // Drop only the categories we actually emptied; leave the
-            // rest of the scan visible so the header still shows the
+        if !dryRun {
+            // Drop only the categories we fully emptied; leave the rest
+            // of the scan visible so the header still shows the
             // remaining reclaimable total.
             for id in appliedIds {
                 scanResults.removeValue(forKey: id)
             }
+            for (id, result) in remaining {
+                scanResults[id] = result
+            }
             selectedCategoryIds.subtract(appliedIds)
-            dismissPreviewBanner()
-            logger.info("Real apply completed cleanly; \(appliedIds.count, privacy: .public) categories cleared")
-        } else if dryRun && !encounteredError {
-            previewBanner = PreviewSummary(items: totalItems, bytes: totalBytes)
-            scheduleBannerDismiss()
+            if !appliedIds.isEmpty { dismissPreviewBanner() }
+            logger.info("Real apply finished; \(appliedIds.count, privacy: .public) categories cleared")
         }
+        return tally
     }
 
     /// Whether an app with `bundleId` is open right now.
@@ -240,6 +264,41 @@ final class CleanViewModel: ObservableObject {
                   scanResults[category.id] != nil else { return false }
             return isAppRunning(bundleId)
         }
+    }
+
+    // MARK: - Errors
+
+    /// What one stage of a run (categories, node_modules, Flutter) did.
+    private struct RunTally {
+        var items = 0
+        var bytes: Int64 = 0
+        var failures = 0
+        var firstFailure: String?
+
+        mutating func noteFailure(_ reason: String) {
+            if firstFailure == nil { firstFailure = reason }
+        }
+
+        mutating func add(_ other: RunTally) {
+            items += other.items
+            bytes += other.bytes
+            failures += other.failures
+            if let reason = other.firstFailure { noteFailure(reason) }
+        }
+    }
+
+    /// Sets one plain-language `lastError` for the run when anything failed.
+    private func reportFailures(_ tally: RunTally) {
+        guard tally.failures > 0 else { return }
+        let noun = tally.failures == 1 ? "item" : "items"
+        var message = "Couldn't clean \(tally.failures) \(noun)."
+        if let reason = tally.firstFailure { message += " \(reason)" }
+        lastError = message
+    }
+
+    /// User taps the × on the error banner.
+    func dismissError() {
+        lastError = nil
     }
 
     // MARK: - Banner
@@ -480,8 +539,8 @@ final class CleanViewModel: ObservableObject {
     }
 
     /// Apply every selection — categories + node_modules + Flutter caches.
-    /// Computes combined banner totals up-front so we can override the
-    /// per-method banners with one summary at the end. `permanently`
+    /// The banner totals what actually succeeded (not the selection), and
+    /// one `lastError` covers every failure in the run. `permanently`
     /// bypasses the Trash (callers must confirm with the user first).
     func applyAll(permanently: Bool = false) async {
         let hasCategories = selectedItemCount > 0
@@ -489,22 +548,26 @@ final class CleanViewModel: ObservableObject {
         let hasFlutter = !flutterSelection.isEmpty
         guard hasCategories || hasNodeModules || hasFlutter else { return }
 
+        lastError = nil
         let blocked = categoriesBlockedByRunningApps
-        let blockedResults = blocked.compactMap { scanResults[$0.id] }
-        let totalItems = combinedSelectedItemCount - blockedResults.reduce(0) { $0 + $1.items.count }
-        let totalBytes = combinedSelectedBytes - blockedResults.reduce(0) { $0 + $1.totalBytes }
 
-        if hasCategories { await apply(permanently: permanently) }
-        if hasNodeModules { await trashSelectedNodeModules(permanently: permanently) }
-        if hasFlutter { await trashSelectedFlutterProjects(permanently: permanently) }
+        var tally = RunTally()
+        if hasCategories { tally.add(await runApply(permanently: permanently)) }
+        if hasNodeModules { tally.add(await runTrashNodeModules(permanently: permanently)) }
+        if hasFlutter { tally.add(await runTrashFlutterProjects(permanently: permanently)) }
 
-        previewBanner = PreviewSummary(
-            items: totalItems,
-            bytes: totalBytes,
-            kind: bannerKind(permanently: permanently),
-            skippedApps: blocked.map(\.title)
-        )
-        if dryRun { scheduleBannerDismiss() }
+        if tally.items > 0 || !blocked.isEmpty {
+            previewBanner = PreviewSummary(
+                items: tally.items,
+                bytes: tally.bytes,
+                kind: bannerKind(permanently: permanently),
+                skippedApps: blocked.map(\.title)
+            )
+            if dryRun { scheduleBannerDismiss() }
+        } else {
+            dismissPreviewBanner()
+        }
+        reportFailures(tally)
     }
 
     /// Walk `~/` looking for node_modules directories. Long-running on
@@ -523,13 +586,28 @@ final class CleanViewModel: ObservableObject {
     }
 
     /// Trash every selected node_modules dir. Honors `dryRun`. Removes
-    /// successfully-trashed entries from the list. `permanently`
-    /// bypasses the Trash (callers must confirm with the user first).
+    /// successfully-trashed entries from the list; failures land in
+    /// `lastError`. `permanently` bypasses the Trash (callers must
+    /// confirm with the user first).
     func trashSelectedNodeModules(permanently: Bool = false) async {
         guard !nodeModulesSelection.isEmpty else { return }
+        lastError = nil
+        let tally = await runTrashNodeModules(permanently: permanently)
+        if tally.failures == 0 || tally.items > 0 {
+            previewBanner = PreviewSummary(
+                items: tally.items,
+                bytes: tally.bytes,
+                kind: bannerKind(permanently: permanently)
+            )
+        }
+        reportFailures(tally)
+    }
 
+    private func runTrashNodeModules(permanently: Bool) async -> RunTally {
+        var tally = RunTally()
         let targets = nodeModulesEntries.filter { nodeModulesSelection.contains($0.url) }
-        var removed: Set<URL> = []
+        var removed: Set<URL> = []   // acted on
+        var vanished: Set<URL> = []  // already gone: not work done, not a failure
         var bytesReclaimed: Int64 = 0
 
         for entry in targets {
@@ -546,22 +624,25 @@ final class CleanViewModel: ObservableObject {
                     bytes: bytes,
                     dryRun: dryRun
                 ))
+            } catch SafeFileError.doesNotExist {
+                vanished.insert(entry.url)
             } catch {
+                tally.failures += 1
+                tally.noteFailure(RuleEngine.failureMessage(for: error, url: entry.url))
                 logger.error(
-                    "trash failed for \(entry.url.path, privacy: .public): \(error.localizedDescription, privacy: .public)"
+                    "trash failed for \(entry.url.path, privacy: .private): \(error.localizedDescription, privacy: .public)"
                 )
             }
         }
 
         if !dryRun {
-            nodeModulesEntries.removeAll { removed.contains($0.url) }
-            nodeModulesSelection.subtract(removed)
+            let gone = removed.union(vanished)
+            nodeModulesEntries.removeAll { gone.contains($0.url) }
+            nodeModulesSelection.subtract(gone)
         }
-        previewBanner = PreviewSummary(
-            items: removed.count,
-            bytes: bytesReclaimed,
-            kind: bannerKind(permanently: permanently)
-        )
+        tally.items = removed.count
+        tally.bytes = bytesReclaimed
+        return tally
     }
 
     // MARK: - Flutter projects
@@ -619,11 +700,25 @@ final class CleanViewModel: ObservableObject {
 
     /// Trash `.dart_tool` and `build` for every selected Flutter project.
     /// Honors `dryRun`. A project is removed from the list only if every
-    /// cache it owns trashed successfully. `permanently` bypasses the
-    /// Trash (callers must confirm with the user first).
+    /// cache it owns trashed successfully; failures land in `lastError`.
+    /// `permanently` bypasses the Trash (callers must confirm with the
+    /// user first).
     func trashSelectedFlutterProjects(permanently: Bool = false) async {
         guard !flutterSelection.isEmpty else { return }
+        lastError = nil
+        let tally = await runTrashFlutterProjects(permanently: permanently)
+        if tally.failures == 0 || tally.items > 0 {
+            previewBanner = PreviewSummary(
+                items: tally.items,
+                bytes: tally.bytes,
+                kind: bannerKind(permanently: permanently)
+            )
+        }
+        reportFailures(tally)
+    }
 
+    private func runTrashFlutterProjects(permanently: Bool) async -> RunTally {
+        var tally = RunTally()
         let targets = flutterProjects.filter { flutterSelection.contains($0.projectURL) }
         var removed: Set<URL> = []
         var bytesReclaimed: Int64 = 0
@@ -631,12 +726,14 @@ final class CleanViewModel: ObservableObject {
         for entry in targets {
             let caches = [entry.dartToolURL, entry.buildURL].compactMap { $0 }
             var allOK = true
+            var actedOnCache = false
             for cacheURL in caches {
                 do {
                     let bytes = permanently
                         ? try await SafeFileOps.permanentlyDelete(cacheURL, dryRun: dryRun)
                         : try await SafeFileOps.trash(cacheURL, dryRun: dryRun)
                     bytesReclaimed += bytes
+                    actedOnCache = true
                     try? await log.append(OperationLogEntry(
                         timestamp: Date(),
                         action: permanently ? .permanentDelete : .trash,
@@ -644,25 +741,31 @@ final class CleanViewModel: ObservableObject {
                         bytes: bytes,
                         dryRun: dryRun
                     ))
+                } catch SafeFileError.doesNotExist {
+                    // Already gone: neither work done nor a failure, so a
+                    // retry can still clear the project.
+                    continue
                 } catch {
                     allOK = false
+                    tally.failures += 1
+                    tally.noteFailure(RuleEngine.failureMessage(for: error, url: cacheURL))
                     logger.error(
-                        "trash failed for \(cacheURL.path, privacy: .public): \(error.localizedDescription, privacy: .public)"
+                        "trash failed for \(cacheURL.path, privacy: .private): \(error.localizedDescription, privacy: .public)"
                     )
                 }
             }
             if allOK { removed.insert(entry.projectURL) }
+            // A project counts once if any of its caches really moved, so
+            // the banner shows real work even when its other cache failed.
+            if actedOnCache { tally.items += 1 }
         }
 
         if !dryRun {
             flutterProjects.removeAll { removed.contains($0.projectURL) }
             flutterSelection.subtract(removed)
         }
-        previewBanner = PreviewSummary(
-            items: removed.count,
-            bytes: bytesReclaimed,
-            kind: bannerKind(permanently: permanently)
-        )
+        tally.bytes = bytesReclaimed
+        return tally
     }
 
     // MARK: - Docker cache (IRREVERSIBLE — separate from the trash flow)
@@ -719,6 +822,7 @@ final class CleanViewModel: ObservableObject {
         guard !dockerSelection.isEmpty else { return }
 
         let targets = dockerCacheEntries.filter { dockerSelection.contains($0.kind) }
+        lastError = nil
 
         isPruningDocker = true
         defer { isPruningDocker = false }
@@ -751,13 +855,24 @@ final class CleanViewModel: ObservableObject {
             dockerSelection.subtract(succeeded)
         }
 
+        let failed = targets.filter { !succeeded.contains($0.kind) }
+        if !failed.isEmpty {
+            let names = failed.map { $0.title.lowercased() }.joined(separator: ", ")
+            let noun = failed.count == 1 ? "item" : "items"
+            lastError = "Couldn't clean \(failed.count) Docker \(noun) (\(names)). Check that Docker is running and try again."
+        }
+
         // Docker prune never goes through the Trash, so a real run
-        // reads as a delete.
-        previewBanner = PreviewSummary(
-            items: succeeded.count,
-            bytes: bytesReclaimed,
-            kind: dryRun ? .preview : .deleted
-        )
-        if dryRun { scheduleBannerDismiss() }
+        // reads as a delete. No success banner when nothing succeeded.
+        if failed.isEmpty || !succeeded.isEmpty {
+            previewBanner = PreviewSummary(
+                items: succeeded.count,
+                bytes: bytesReclaimed,
+                kind: dryRun ? .preview : .deleted
+            )
+            if dryRun { scheduleBannerDismiss() }
+        } else {
+            dismissPreviewBanner()
+        }
     }
 }

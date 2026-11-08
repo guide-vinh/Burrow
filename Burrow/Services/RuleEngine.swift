@@ -89,12 +89,16 @@ actor RuleEngine {
     /// SafeFileOps.permanentlyDelete when `permanently` is true — and
     /// writes an OperationLogEntry. Per-item failures are logged and
     /// skipped — a single bad item never aborts the batch (SPEC section
-    /// 6). Returns the total bytes successfully acted on. In dry-run
+    /// 6). An item that no longer exists is neither success nor failure
+    /// and is not logged. In dry-run
     /// mode, nothing is touched on disk but log entries ARE written
     /// with dryRun=true (SPEC section 6 audit-trail requirement).
+    /// The outcome says what actually happened: bytes and count of items
+    /// that succeeded, plus the items that failed and the first reason.
+    /// Only cancellation throws.
     @discardableResult
-    func apply(_ result: ScanResult, dryRun: Bool, permanently: Bool = false) async throws -> Int64 {
-        var total: Int64 = 0
+    func apply(_ result: ScanResult, dryRun: Bool, permanently: Bool = false) async throws -> ApplyOutcome {
+        var outcome = ApplyOutcome()
 
         for item in result.items {
             try Task.checkCancellation()
@@ -107,10 +111,18 @@ actor RuleEngine {
                 } else {
                     try await SafeFileOps.trash(item.url, dryRun: dryRun)
                 }
+            } catch SafeFileError.doesNotExist {
+                // Already gone (caches churn): the outcome the user wanted.
+                // Neither work done nor a failure, and nothing to audit.
+                continue
             } catch {
                 logger.error(
                     "\(permanently ? "Delete" : "Trash", privacy: .public) failed for \(item.url.path, privacy: .private): \(error.localizedDescription, privacy: .public)"
                 )
+                outcome.failedItems.append(item)
+                if outcome.firstFailure == nil {
+                    outcome.firstFailure = Self.failureMessage(for: error, url: item.url)
+                }
                 continue
             }
 
@@ -130,14 +142,38 @@ actor RuleEngine {
                 )
             }
 
-            total += bytes
+            outcome.bytes += bytes
+            outcome.succeededCount += 1
         }
 
         logger.info(
-            "Apply finished for \(result.categoryId, privacy: .public): \(total, privacy: .public) bytes acted on (dryRun=\(dryRun, privacy: .public))"
+            "Apply finished for \(result.categoryId, privacy: .public): \(outcome.bytes, privacy: .public) bytes acted on, \(outcome.failedItems.count, privacy: .public) failed (dryRun=\(dryRun, privacy: .public))"
         )
 
-        return total
+        return outcome
+    }
+
+    /// What `apply` actually did to one `ScanResult`.
+    struct ApplyOutcome: Equatable {
+        /// Bytes of the items that succeeded.
+        var bytes: Int64 = 0
+        var succeededCount = 0
+        var failedItems: [ScanItem] = []
+        /// Plain-language reason for the first failure, if any.
+        var firstFailure: String?
+    }
+
+    /// User-facing reason `url` couldn't be removed. Never exposes raw
+    /// error enums or category ids.
+    nonisolated static func failureMessage(for error: Error, url: URL) -> String {
+        let name = url.lastPathComponent
+        if let described = (error as? LocalizedError)?.errorDescription {
+            return described
+        }
+        if case .trashFailed(_, let underlying)? = error as? SafeFileError {
+            return "Couldn't remove \(name): \(underlying.localizedDescription)"
+        }
+        return "Couldn't remove \(name): \(error.localizedDescription)"
     }
 
     // MARK: - Private helpers

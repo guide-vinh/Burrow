@@ -217,8 +217,14 @@ final class TreemapLayoutTests: XCTestCase {
 
     func testLargeItemCount() {
         // 500 deterministic weights
-        let items = (0..<500).map { i in
-            TreemapLayout.Item(id: i, weight: Double((i % 97) + 1) * Double((i % 13) + 1))
+        // Explicit types: the single-expression closure times out the
+        // type checker on Xcode 27.
+        var items: [TreemapLayout.Item] = []
+        items.reserveCapacity(500)
+        for i in 0..<500 {
+            let a: Double = Double((i % 97) + 1)
+            let b: Double = Double((i % 13) + 1)
+            items.append(TreemapLayout.Item(id: i, weight: a * b))
         }
         let bounds = CGRect(x: 0, y: 0, width: 1000, height: 1000)
 

@@ -311,6 +311,180 @@ final class CleanViewModelTests: XCTestCase {
         XCTAssertNil(vm.previewBanner)
     }
 
+    // MARK: - Failures
+
+    /// Two categories in temp dirs: "good" (one file) and "bad" (two files).
+    /// After a scan, deleting a "bad" file makes `SafeFileOps.validate`
+    /// reject it (doesNotExist) before anything is mutated.
+    private func catalogForFailures() throws -> (CleanCatalog, goodFile: URL, badKept: URL, badGone: URL) {
+        let goodDir = fixture.appendingPathComponent("good")
+        let badDir = fixture.appendingPathComponent("bad")
+        for dir in [goodDir, badDir] {
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        }
+        let goodFile = goodDir.appendingPathComponent("cache.bin")
+        let badKept = badDir.appendingPathComponent("a.bin")
+        let badGone = badDir.appendingPathComponent("b.bin")
+        try Data(repeating: 0x01, count: 100).write(to: goodFile)
+        try Data(repeating: 0x02, count: 200).write(to: badKept)
+        try Data(repeating: 0x03, count: 400).write(to: badGone)
+
+        func category(_ id: String, dir: URL) -> CleanCategory {
+            CleanCategory(
+                id: id, title: id, summary: "", group: .system, icon: "trash", risk: .low,
+                defaultEnabled: true, requiresAppQuit: nil, exclude: nil,
+                rules: [.directoryContents(path: dir.path, olderThanDays: nil, includeHidden: nil, needsPrivilege: nil)]
+            )
+        }
+        let catalog = CleanCatalog(schemaVersion: 1, categories: [
+            category("test.good", dir: goodDir),
+            category("test.bad", dir: badDir),
+        ])
+        return (catalog, goodFile, badKept, badGone)
+    }
+
+    /// Replaces `url` (after the scan) with a symlink into the running app
+    /// bundle. `SafeFileOps.validate` resolves symlinks for the bundle check
+    /// and throws `protectedPath` BEFORE anything is mutated, so a real apply
+    /// fails for that item without touching it or the bundle. The guard below
+    /// proves that before any apply can run.
+    private func makeUnremovable(_ url: URL, file: StaticString = #filePath, line: UInt = #line) throws {
+        try FileManager.default.removeItem(at: url)
+        try FileManager.default.createSymbolicLink(at: url, withDestinationURL: Bundle.main.bundleURL)
+        XCTAssertThrowsError(try SafeFileOps.validate(url), "precondition: validate must reject the link", file: file, line: line) { error in
+            guard case SafeFileError.protectedPath = error else {
+                return XCTFail("expected protectedPath, got \(error)", file: file, line: line)
+            }
+        }
+    }
+
+    func testVanishedItemIsNotAFailure() async throws {
+        let (catalog, goodFile, badKept, badGone) = try catalogForFailures()
+        let vm = CleanViewModel(catalog: catalog, log: freshLog())
+        await vm.scan()
+        let goodBytes = try XCTUnwrap(vm.scanResults["test.good"]).totalBytes
+        let keptBytes = try XCTUnwrap(vm.scanResults["test.bad"]?.items.first { $0.url.lastPathComponent == "a.bin" }).bytes
+        try FileManager.default.removeItem(at: badGone)
+
+        await vm.applyAll()
+
+        XCTAssertNil(vm.lastError, "a file that is already gone is the outcome the user wanted")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: goodFile.path))
+        let banner = try XCTUnwrap(vm.previewBanner)
+        XCTAssertEqual(banner.items, 2, "the vanished item is not counted")
+        XCTAssertEqual(banner.bytes, goodBytes + keptBytes)
+        XCTAssertTrue(vm.scanResults.isEmpty, "category with a vanished leftover clears normally")
+        XCTAssertTrue(vm.selectedCategoryIds.isEmpty)
+    }
+
+    func testEverythingVanishedClearsWithoutErrorOrBanner() async throws {
+        let (catalog, goodFile, badKept, badGone) = try catalogForFailures()
+        let vm = CleanViewModel(catalog: catalog, log: freshLog())
+        await vm.scan()
+        for url in [goodFile, badKept, badGone] { try FileManager.default.removeItem(at: url) }
+
+        await vm.applyAll()
+
+        XCTAssertNil(vm.lastError)
+        XCTAssertNil(vm.previewBanner, "nothing was done, so no success banner")
+        XCTAssertTrue(vm.scanResults.isEmpty)
+        XCTAssertTrue(vm.selectedCategoryIds.isEmpty)
+    }
+
+    func testApplyAllPartialFailureCountsOnlySuccessesAndKeepsFailedCategory() async throws {
+        let (catalog, goodFile, badKept, badGone) = try catalogForFailures()
+        let vm = CleanViewModel(catalog: catalog, log: freshLog())
+        await vm.scan()
+        let goodBytes = try XCTUnwrap(vm.scanResults["test.good"]).totalBytes
+        let badItems = try XCTUnwrap(vm.scanResults["test.bad"]).items
+        let keptBytes = try XCTUnwrap(badItems.first { $0.url.lastPathComponent == "a.bin" }).bytes
+        let goneBytes = try XCTUnwrap(badItems.first { $0.url.lastPathComponent == "b.bin" }).bytes
+        try makeUnremovable(badGone)
+
+        await vm.applyAll()
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: goodFile.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: badKept.path), "the item that could be trashed still is")
+        XCTAssertNotNil(try? FileManager.default.destinationOfSymbolicLink(atPath: badGone.path), "the refused link was left alone")
+        let banner = try XCTUnwrap(vm.previewBanner)
+        XCTAssertEqual(banner.items, 2, "good file + the surviving file; the failed one is not counted")
+        XCTAssertEqual(banner.bytes, goodBytes + keptBytes)
+        let error = try XCTUnwrap(vm.lastError)
+        XCTAssertTrue(error.hasPrefix("Couldn't clean 1 item."), error)
+        XCTAssertTrue(error.contains("b.bin is protected"), "first reason names the file: \(error)")
+        XCTAssertFalse(error.contains("test.bad"), "no raw category ids")
+
+        XCTAssertNil(vm.scanResults["test.good"], "clean category is cleared despite the other failing")
+        XCTAssertFalse(vm.selectedCategoryIds.contains("test.good"))
+        let remaining = try XCTUnwrap(vm.scanResults["test.bad"], "failed category stays listed")
+        XCTAssertEqual(remaining.items.map(\.url.lastPathComponent), ["b.bin"], "shrunk to the failed item")
+        XCTAssertEqual(remaining.totalBytes, goneBytes, "sizes shown are for what is left")
+        XCTAssertTrue(vm.selectedCategoryIds.contains("test.bad"), "failed category stays selected")
+    }
+
+    func testApplyAllWhereEverythingFailsShowsErrorAndNoSuccessBanner() async throws {
+        let (catalog, goodFile, badKept, badGone) = try catalogForFailures()
+        let vm = CleanViewModel(catalog: catalog, log: freshLog())
+        await vm.scan()
+        for url in [goodFile, badKept, badGone] { try makeUnremovable(url) }
+
+        await vm.applyAll()
+
+        XCTAssertNil(vm.previewBanner, "no success banner when nothing succeeded")
+        let error = try XCTUnwrap(vm.lastError)
+        XCTAssertTrue(error.hasPrefix("Couldn't clean 3 items."), error)
+        XCTAssertEqual(Set(vm.scanResults.keys), ["test.good", "test.bad"], "nothing was cleaned, nothing cleared")
+        XCTAssertEqual(vm.selectedCategoryIds, ["test.good", "test.bad"])
+    }
+
+    func testApplyAloneSurfacesFailures() async throws {
+        let (catalog, _, _, badGone) = try catalogForFailures()
+        let vm = CleanViewModel(catalog: catalog, log: freshLog())
+        await vm.scan()
+        try makeUnremovable(badGone)
+
+        await vm.apply()
+
+        XCTAssertTrue(try XCTUnwrap(vm.lastError).hasPrefix("Couldn't clean 1 item."))
+        XCTAssertNotNil(vm.scanResults["test.bad"])
+        XCTAssertNil(vm.scanResults["test.good"])
+    }
+
+    func testDismissErrorClearsIt() async throws {
+        let (catalog, _, _, badGone) = try catalogForFailures()
+        let vm = CleanViewModel(catalog: catalog, log: freshLog())
+        await vm.scan()
+        try makeUnremovable(badGone)
+        await vm.applyAll()
+        XCTAssertNotNil(vm.lastError)
+
+        vm.dismissError()
+
+        XCTAssertNil(vm.lastError)
+    }
+
+    func testFailedCategoryCleansOnRetryAndNewRunClearsOldError() async throws {
+        let (catalog, _, badKept, badGone) = try catalogForFailures()
+        let vm = CleanViewModel(catalog: catalog, log: freshLog())
+        await vm.scan()
+        try makeUnremovable(badGone)
+        await vm.applyAll()
+        XCTAssertNotNil(vm.lastError)
+        XCTAssertNotNil(vm.scanResults["test.bad"])
+
+        // The obstacle goes away (a real file is back), so the retry works.
+        try FileManager.default.removeItem(at: badGone)
+        try Data(repeating: 0x03, count: 400).write(to: badGone)
+        await vm.applyAll()
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: badGone.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: badKept.path))
+        XCTAssertNil(vm.lastError, "a new run clears the previous run's error")
+        XCTAssertNil(vm.scanResults["test.bad"], "category fails in one run, succeeds in the next")
+        XCTAssertTrue(vm.selectedCategoryIds.isEmpty)
+        XCTAssertEqual(vm.previewBanner?.items, 1)
+    }
+
     func testApplyBeforeLoadCatalogSetsLastError() async throws {
         let vm = CleanViewModel(log: freshLog())
         await vm.apply()
